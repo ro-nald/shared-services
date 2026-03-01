@@ -1,0 +1,101 @@
+# -----------------------------------------------------------------------------
+# EXAMPLE — copy this file to teams/<your-team>.tf and customise it.
+#
+# Naming rules:
+#   file:   teams/<team-slug>.tf              e.g. teams/team-payments.tf
+#   role:   terraform-deployer-<team-slug>    e.g. terraform-deployer-team-payments
+#   policy: terraform-deployer-<team-slug>-policy
+#
+# Steps:
+#   1. Copy this file: cp team-example.tf.example teams/team-<slug>.tf
+#   2. Replace every occurrence of "example" with your team slug.
+#   3. Select the permission sets your team needs from permission-sets.tf.
+#      Do NOT add raw IAM actions — compose from the approved building blocks.
+#      If you need a new permission set, open a separate PR to permission-sets.tf.
+#   4. Open a PR. Your team lead and the platform team are required reviewers
+#      (see .github/CODEOWNERS).
+# -----------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Team GUID — stable 6-character hex identifier unique to this team's repo.
+# Used as a component of the team's Terraform state key to prevent path
+# guessing between teams. Written to SSM so the team bootstrap CLI can read
+# it during onboarding.
+# ---------------------------------------------------------------------------
+
+resource "random_id" "team_example_guid" {
+  byte_length = 3 # 6 hex characters
+}
+
+# ---------------------------------------------------------------------------
+# SSM — publish this team's onboarding values after apply-iam.
+# The team bootstrap CLI reads these to generate backend.hcl.
+# ---------------------------------------------------------------------------
+
+resource "aws_ssm_parameter" "team_example_deployer_role_arn" {
+  name  = "/shared-services/${var.ssm_namespace_id}/iam/deployer-role-arn/team-example"
+  type  = "String"
+  value = aws_iam_role.team_example_deployer.arn
+
+  tags = merge(var.tags, { Team = "example" })
+}
+
+resource "aws_ssm_parameter" "team_example_state_guid" {
+  name  = "/shared-services/${var.ssm_namespace_id}/iam/team-state-guid/team-example"
+  type  = "String"
+  value = random_id.team_example_guid.hex
+
+  tags = merge(var.tags, { Team = "example" })
+}
+
+# ---------------------------------------------------------------------------
+# Role permissions
+# ---------------------------------------------------------------------------
+
+data "aws_iam_policy_document" "team_example_permissions" {
+  # Compose from the platform-approved building blocks in permission-sets.tf.
+  # Remove or add source_policy_documents entries to match your team's needs.
+  source_policy_documents = [
+    # data.aws_iam_policy_document.pset_ecr_manage.json,
+    # data.aws_iam_policy_document.pset_ec2_manage.json,
+    # data.aws_iam_policy_document.pset_vpc_manage.json,
+    # data.aws_iam_policy_document.pset_iam_service_roles.json,
+    data.aws_iam_policy_document.pset_s3_team_state.json,
+    data.aws_iam_policy_document.pset_ssm_shared_read.json,
+    data.aws_iam_policy_document.pset_sts_caller_identity.json,
+  ]
+}
+
+resource "aws_iam_policy" "team_example_deployer" {
+  name        = "terraform-deployer-team-example-policy"
+  description = "Permissions for the example team's Terraform deployer role"
+  policy      = data.aws_iam_policy_document.team_example_permissions.json
+
+  tags = merge(var.tags, {
+    Team        = "example"
+    Environment = "dev"
+  })
+}
+
+resource "aws_iam_role" "team_example_deployer" {
+  name               = "terraform-deployer-team-example"
+  description        = "Assumed by Terraform to deploy example team resources"
+  assume_role_policy = data.aws_iam_policy_document.terraform_trust.json
+
+  # Required: all team roles must have the permission boundary attached.
+  # This is enforced automatically by the OPA policy gate in CI.
+  permissions_boundary = aws_iam_policy.team_deployer_boundary.arn
+
+  max_session_duration = 3600
+
+  tags = merge(var.tags, {
+    Purpose     = "terraform-deployer"
+    Team        = "example"
+    Environment = "dev"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "team_example_deployer" {
+  role       = aws_iam_role.team_example_deployer.name
+  policy_arn = aws_iam_policy.team_example_deployer.arn
+}
