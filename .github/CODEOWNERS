@@ -1,0 +1,29 @@
+# ---------------------------------------------------------------------------
+# CODEOWNERS — required reviewers for pull requests
+#
+# The platform team is a required reviewer for all changes.
+# Team leads are required reviewers for their own team's IAM role file.
+#
+# Replace @your-org/platform-team with your actual GitHub team or usernames.
+# Syntax: <path pattern>   <GitHub username or team>
+# ---------------------------------------------------------------------------
+
+# Default: platform team reviews everything
+*                                                    @your-org/platform-team
+
+# IAM governance files — platform team only
+terraform/environments/iam/main.tf                  @your-org/platform-team
+terraform/environments/iam/variables.tf             @your-org/platform-team
+terraform/environments/iam/outputs.tf               @your-org/platform-team
+terraform/environments/iam/permission-sets.tf       @your-org/platform-team
+terraform/environments/iam/roles.tf                 @your-org/platform-team
+
+# Team deployer roles — team lead + platform team
+# Add an entry per team following this pattern:
+#   terraform/environments/iam/teams/team-<slug>.tf  @<team-lead-github-handle> @your-org/platform-team
+#
+# Example:
+#   terraform/environments/iam/teams/team-payments.tf  @alice @your-org/platform-team
+#   terraform/environments/iam/teams/team-data.tf      @bob   @your-org/platform-team
+
+terraform/environments/iam/teams/                   @your-org/platform-team
