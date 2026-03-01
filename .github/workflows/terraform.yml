@@ -1,0 +1,248 @@
+name: Terraform
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write   # required for OIDC token exchange
+  pull-requests: write  # required for plan comment on PR
+
+# Cancel in-progress runs on the same branch/PR to avoid concurrent applies
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_IN_AUTOMATION: "true"
+  AWS_REGION: ap-east-1
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Detect which environments have changed (PR only)
+  # ---------------------------------------------------------------------------
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    outputs:
+      iam: ${{ steps.filter.outputs.iam }}
+      dev: ${{ steps.filter.outputs.dev }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            iam:
+              - 'terraform/environments/iam/**'
+              - 'terraform/policies/**'
+            dev:
+              - 'terraform/environments/dev/**'
+              - 'terraform/modules/**'
+
+  # ---------------------------------------------------------------------------
+  # fmt — formatting check (no AWS credentials needed)
+  # ---------------------------------------------------------------------------
+  fmt:
+    name: Format check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.10"
+      - name: Check formatting
+        run: terraform fmt -check -recursive terraform/
+
+  # ---------------------------------------------------------------------------
+  # validate — syntax check without hitting AWS (no credentials needed)
+  # ---------------------------------------------------------------------------
+  validate-iam:
+    name: Validate iam
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.10"
+      - name: Validate
+        run: |
+          terraform -chdir=terraform/environments/iam init -backend=false
+          terraform -chdir=terraform/environments/iam validate
+
+  validate-dev:
+    name: Validate dev
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.10"
+      - name: Validate
+        run: |
+          terraform -chdir=terraform/environments/dev init -backend=false
+          terraform -chdir=terraform/environments/dev validate
+
+  # ---------------------------------------------------------------------------
+  # plan-iam — plan + OPA/Conftest policy gate (path-filtered)
+  # ---------------------------------------------------------------------------
+  plan-iam:
+    name: Plan iam
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.iam == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.10"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.CI_PIPELINE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        run: |
+          terraform -chdir=terraform/environments/iam init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=iam/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform plan
+        run: |
+          terraform -chdir=terraform/environments/iam plan \
+            -var="ssm_namespace_id=${{ vars.SSM_NAMESPACE }}" \
+            -var="state_bucket_name=${{ vars.TF_STATE_BUCKET }}" \
+            -out=tfplan.binary
+          terraform -chdir=terraform/environments/iam show -json tfplan.binary > tfplan.json
+
+      - name: Install Conftest
+        env:
+          CONFTEST_VERSION: "0.57.0"
+        run: |
+          curl -sL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+            | tar xz conftest
+          sudo mv conftest /usr/local/bin/
+
+      - name: OPA policy check
+        run: conftest test --policy terraform/policies tfplan.json
+
+  # ---------------------------------------------------------------------------
+  # plan-dev (path-filtered)
+  # ---------------------------------------------------------------------------
+  plan-dev:
+    name: Plan dev
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.dev == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.10"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.CI_PIPELINE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        run: |
+          terraform -chdir=terraform/environments/dev init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=dev/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform plan
+        run: |
+          terraform -chdir=terraform/environments/dev plan \
+            -var="ssm_namespace_id=${{ vars.SSM_NAMESPACE }}"
+
+  # ---------------------------------------------------------------------------
+  # apply-iam — gated by the iam-production GitHub Environment
+  # ---------------------------------------------------------------------------
+  apply-iam:
+    name: Apply iam
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: iam-production   # pauses for required reviewer approval
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.10"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.CI_PIPELINE_ROLE_ARN }}
+          role-session-name: ci-apply-iam
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        run: |
+          terraform -chdir=terraform/environments/iam init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=iam/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform apply
+        run: |
+          terraform -chdir=terraform/environments/iam apply -auto-approve \
+            -var="ssm_namespace_id=${{ vars.SSM_NAMESPACE }}" \
+            -var="state_bucket_name=${{ vars.TF_STATE_BUCKET }}"
+
+  # ---------------------------------------------------------------------------
+  # apply-dev — runs after apply-iam succeeds
+  # ---------------------------------------------------------------------------
+  apply-dev:
+    name: Apply dev
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: apply-iam
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.10"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.CI_PIPELINE_ROLE_ARN }}
+          role-session-name: ci-apply-dev
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        run: |
+          terraform -chdir=terraform/environments/dev init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=dev/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform apply
+        run: |
+          terraform -chdir=terraform/environments/dev apply -auto-approve \
+            -var="ssm_namespace_id=${{ vars.SSM_NAMESPACE }}"
