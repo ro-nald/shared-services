@@ -1,0 +1,10 @@
+# Fallback for pip users. The preferred way to run bootstrap.py is:
+#   uv run scripts/bootstrap.py
+#
+# uv reads dependencies from the PEP 723 inline metadata in the script itself,
+# so no install step is needed. Install uv: https://docs.astral.sh/uv/
+#
+# If you prefer pip:
+#   pip install -r scripts/requirements.txt
+click>=8.0
+rich>=13.0
