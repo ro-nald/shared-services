@@ -8,6 +8,11 @@ output "terraform_deployer_dev_role_arn" {
   value       = aws_iam_role.terraform_deployer_dev.arn
 }
 
+output "platform_bootstrap_role_arn" {
+  description = "ARN of the IAM role for re-running the core bootstrap (apply-core)"
+  value       = aws_iam_role.platform_bootstrap.arn
+}
+
 output "next_steps" {
   description = <<-EOT
     Use the role-picker CLI (separate repo) to discover and select a deployer role,
