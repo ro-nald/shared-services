@@ -24,11 +24,6 @@ variable "tags" {
   default = {}
 }
 
-variable "ssm_namespace_id" {
-  description = "6-character hex namespace ID for SSM parameters published by shared-services (from core outputs)"
-  type        = string
-}
-
 variable "terraform_role_arn" {
   description = <<-EOT
     ARN of the IAM role for Terraform to assume when deploying this environment.

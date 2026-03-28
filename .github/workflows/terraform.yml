@@ -123,8 +123,6 @@ jobs:
       - name: Terraform plan
         run: |
           terraform -chdir=terraform/environments/iam plan \
-            -var="ssm_namespace_id=${{ vars.SSM_NAMESPACE }}" \
-            -var="state_bucket_name=${{ vars.TF_STATE_BUCKET }}" \
             -out=tfplan.binary
           terraform -chdir=terraform/environments/iam show -json tfplan.binary > tfplan.json
 
@@ -170,9 +168,7 @@ jobs:
             -backend-config="encrypt=true"
 
       - name: Terraform plan
-        run: |
-          terraform -chdir=terraform/environments/dev plan \
-            -var="ssm_namespace_id=${{ vars.SSM_NAMESPACE }}"
+        run: terraform -chdir=terraform/environments/dev plan
 
   # ---------------------------------------------------------------------------
   # apply-iam — gated by the iam-production GitHub Environment
@@ -206,10 +202,7 @@ jobs:
             -backend-config="encrypt=true"
 
       - name: Terraform apply
-        run: |
-          terraform -chdir=terraform/environments/iam apply -auto-approve \
-            -var="ssm_namespace_id=${{ vars.SSM_NAMESPACE }}" \
-            -var="state_bucket_name=${{ vars.TF_STATE_BUCKET }}"
+        run: terraform -chdir=terraform/environments/iam apply -auto-approve
 
   # ---------------------------------------------------------------------------
   # apply-dev — runs after apply-iam succeeds
@@ -243,6 +236,4 @@ jobs:
             -backend-config="encrypt=true"
 
       - name: Terraform apply
-        run: |
-          terraform -chdir=terraform/environments/dev apply -auto-approve \
-            -var="ssm_namespace_id=${{ vars.SSM_NAMESPACE }}"
+        run: terraform -chdir=terraform/environments/dev apply -auto-approve

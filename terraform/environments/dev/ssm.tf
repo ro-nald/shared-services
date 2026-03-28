@@ -7,7 +7,7 @@
 # -----------------------------------------------------------------------------
 
 resource "aws_ssm_parameter" "ecr_push_role_arn" {
-  name  = "/shared-services/${var.ssm_namespace_id}/dev/ecr-push-role-arn"
+  name  = "/shared-services/${data.terraform_remote_state.core.outputs.ssm_namespace_id}/dev/ecr-push-role-arn"
   type  = "String"
   value = module.ecr.github_actions_role_arn
 
@@ -15,7 +15,7 @@ resource "aws_ssm_parameter" "ecr_push_role_arn" {
 }
 
 resource "aws_ssm_parameter" "github_oidc_provider_arn" {
-  name  = "/shared-services/${var.ssm_namespace_id}/dev/github-oidc-provider-arn"
+  name  = "/shared-services/${data.terraform_remote_state.core.outputs.ssm_namespace_id}/dev/github-oidc-provider-arn"
   type  = "String"
   value = module.ecr.github_oidc_provider_arn
 
@@ -27,7 +27,7 @@ resource "aws_ssm_parameter" "ecr_url" {
 
   # Sanitise ECR repo names: replace "/" with "--" so the path remains valid.
   # e.g. "dev/service-a" → parameter name "dev--service-a"
-  name  = "/shared-services/${var.ssm_namespace_id}/dev/ecr/${replace(each.key, "/", "--")}"
+  name  = "/shared-services/${data.terraform_remote_state.core.outputs.ssm_namespace_id}/dev/ecr/${replace(each.key, "/", "--")}"
   type  = "String"
   value = each.value
 

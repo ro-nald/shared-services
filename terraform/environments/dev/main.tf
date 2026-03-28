@@ -29,6 +29,17 @@ provider "aws" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
+data "terraform_remote_state" "core" {
+  backend = "s3"
+  config = {
+    bucket = "shared-services-tfstate-${data.aws_caller_identity.current.account_id}"
+    key    = "core/terraform.tfstate"
+    region = var.aws_region
+  }
+}
+
 module "ecr" {
   source = "../../modules/aws/ecr"
 

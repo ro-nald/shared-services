@@ -297,7 +297,6 @@ def configure_github():
 
     bucket = state["state_bucket_name"]
     ci_role_arn = state["ci_pipeline_role_arn"]
-    ssm_namespace_id = state.get("ssm_namespace_id", "")
 
     repo = git_remote_repo()
     if not repo:
@@ -314,13 +313,6 @@ def configure_github():
     console.print("\n[bold]Setting GitHub Variable TF_STATE_BUCKET...[/bold]")
     run(["gh", "variable", "set", "TF_STATE_BUCKET", "--body", bucket, "--repo", repo])
     console.print(f"  TF_STATE_BUCKET = {bucket}")
-
-    console.print("\n[bold]Setting GitHub Variable SSM_NAMESPACE...[/bold]")
-    if ssm_namespace_id:
-        run(["gh", "variable", "set", "SSM_NAMESPACE", "--body", ssm_namespace_id, "--repo", repo])
-        console.print(f"  SSM_NAMESPACE = {ssm_namespace_id}")
-    else:
-        console.print("[yellow]  SSM_NAMESPACE skipped — re-run apply-core to generate the GUID.[/yellow]")
 
     console.print("\n[bold]Setting GitHub Secret CI_PIPELINE_ROLE_ARN...[/bold]")
     run(["gh", "secret", "set", "CI_PIPELINE_ROLE_ARN", "--body", ci_role_arn, "--repo", repo])

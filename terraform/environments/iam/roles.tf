@@ -58,8 +58,8 @@ data "aws_iam_policy_document" "team_deployer_boundary" {
     effect  = "Allow"
     actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket", "s3:GetBucketVersioning"]
     resources = [
-      "arn:aws:s3:::${var.state_bucket_name}/teams/*",
-      "arn:aws:s3:::${var.state_bucket_name}",
+      "arn:aws:s3:::${data.terraform_remote_state.core.outputs.state_bucket_name}/teams/*",
+      "arn:aws:s3:::${data.terraform_remote_state.core.outputs.state_bucket_name}",
     ]
   }
 
@@ -71,7 +71,7 @@ data "aws_iam_policy_document" "team_deployer_boundary" {
       "ssm:GetParametersByPath",
     ]
     resources = [
-      "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/shared-services/${var.ssm_namespace_id}/*",
+      "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/shared-services/${data.terraform_remote_state.core.outputs.ssm_namespace_id}/*",
     ]
   }
 

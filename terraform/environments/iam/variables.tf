@@ -21,16 +21,6 @@ variable "trusted_principal_arns" {
   default = []
 }
 
-variable "ssm_namespace_id" {
-  description = "6-character hex namespace ID for SSM parameters published by shared-services (from core outputs)"
-  type        = string
-}
-
-variable "state_bucket_name" {
-  description = "Name of the S3 state bucket (from core outputs). Used to scope team S3 permissions to teams/* prefix only."
-  type        = string
-}
-
 variable "tags" {
   description = "Common tags applied to all resources"
   type        = map(string)
