@@ -24,7 +24,7 @@ scripts/
 ## Prerequisites
 
 - [Terraform](https://developer.hashicorp.com/terraform/install) ≥ 1.10
-- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) ≥ 2.x, configured with admin credentials
+- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) ≥ 2.x, configured with credentials. For the first-ever bootstrap, use an admin SSO permission set. For subsequent re-runs of `apply-core`, use the `platform-bootstrap` IAM role (see [Re-running apply-core](#re-running-apply-core))
 - [gh CLI](https://cli.github.com/) ≥ 2.x
 - [uv](https://docs.astral.sh/uv/) (runs the bootstrap CLI — installs Python and dependencies automatically)
 
@@ -90,6 +90,37 @@ repository so CI jobs can authenticate and access state:
 ```bash
 uv run scripts/bootstrap.py configure-github
 ```
+
+## Re-running apply-core
+
+After the initial bootstrap, the `platform-bootstrap` IAM role (created by `iam/`) provides
+the minimum permissions needed to re-run `apply-core` without admin credentials.
+
+**1. Get the role ARN** from the `iam/` Terraform outputs:
+
+```bash
+cd terraform/environments/iam
+terraform output platform_bootstrap_role_arn
+```
+
+**2. Add a named profile to `~/.aws/config`:**
+
+```ini
+[profile platform-bootstrap]
+role_arn          = <role ARN from step 1>
+source_profile    = <your SSO profile name>
+role_session_name = platform-bootstrap
+```
+
+**3. Run the bootstrap under that profile:**
+
+```bash
+AWS_PROFILE=platform-bootstrap uv run scripts/bootstrap.py apply-core
+```
+
+The `source_profile` must be an SSO profile whose underlying IAM principal has `sts:AssumeRole`
+permission for the `platform-bootstrap` role. This is controlled by `var.trusted_principal_arns`
+in `iam/` (defaults to allowing any principal in the account).
 
 ## CI/CD
 
