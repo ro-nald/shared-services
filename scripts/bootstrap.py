@@ -43,6 +43,7 @@ CORE_DIR = REPO_ROOT / "terraform" / "environments" / "core"
 IAM_DIR = REPO_ROOT / "terraform" / "environments" / "iam"
 DEV_DIR = REPO_ROOT / "terraform" / "environments" / "dev"
 STATE_FILE = REPO_ROOT / "scripts" / ".bootstrap-state.json"
+CORE_OVERRIDE = CORE_DIR / "override.tf"
 
 ENV_DIRS = {
     "iam": IAM_DIR,
@@ -202,6 +203,8 @@ def apply_core():
 
     _run_checks(abort_on_fail=True)
 
+    CORE_OVERRIDE.write_text('terraform {\n  backend "local" {}\n}\n')
+
     console.print("\n[bold]Initialising core (local backend)...[/bold]")
     run(["terraform", "-chdir=terraform/environments/core", "init"])
 
@@ -228,6 +231,8 @@ def apply_core():
     console.print(f"  state_bucket_name    = {bucket}")
     console.print(f"  ci_pipeline_role_arn = {ci_role_arn}")
     console.print(f"  ssm_namespace_id     = {ssm_namespace_id}")
+
+    CORE_OVERRIDE.unlink()
 
     console.print("\n[bold]Writing core/backend.hcl...[/bold]")
     hcl_path = write_backend_hcl("core", bucket)
