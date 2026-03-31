@@ -40,12 +40,13 @@ terraform output terraform_deployer_dev_role_arn
 
 ```text
 environments/iam/
-├── main.tf              # Provider config and bootstrap comments
-├── variables.tf         # Input variables
-├── terraform.tfvars     # Variable values
-├── outputs.tf           # Role ARNs and next-steps guidance
-├── permission-sets.tf   # Platform-owned reusable permission building blocks
-├── roles.tf             # Platform deployer role + permission boundary policy
+├── main.tf                   # Provider config and bootstrap comments
+├── variables.tf              # Input variables
+├── terraform.tfvars          # Variable values
+├── outputs.tf                # Role ARNs and next-steps guidance
+├── permission-sets.tf        # Platform-owned reusable permission building blocks
+├── platform-bootstrap.tf     # IAM role for re-running apply-core without admin credentials
+├── roles.tf                  # Platform deployer role + permission boundary policy
 └── teams/
     ├── .gitkeep
     ├── team-example.tf.example   # Copy this to add a new team role
@@ -79,6 +80,8 @@ repository. The PR is the formal record of the permission request.
    | `pset_vpc_manage` | VPCs, subnets, route tables, internet gateways |
    | `pset_iam_service_roles` | IAM roles and policies for services (not user management) |
    | `pset_sts_caller_identity` | Read current AWS identity (needed by most deployments) |
+   | `pset_s3_team_state` | Scoped read/write to the team's own state prefix in the shared S3 bucket |
+   | `pset_ssm_shared_read` | Read-only access to shared-services SSM outputs under the platform namespace |
 
    Do **not** add raw IAM actions directly to your team file. If you need a permission
    that does not exist in any permission set, open a separate PR to `permission-sets.tf`
@@ -136,6 +139,7 @@ resource "aws_iam_role_policy_attachment" "team_payments_deployer" {
 |---|---|
 | `aws_account_id` | AWS account ID |
 | `terraform_deployer_dev_role_arn` | ARN of the platform deployer role for the dev environment |
+| `platform_bootstrap_role_arn` | ARN of the IAM role for re-running `apply-core` without admin credentials |
 | `next_steps` | Guidance on how to use the role ARN in Stage 2 |
 
 ## Discovering roles (role-picker CLI)

@@ -16,7 +16,7 @@ first.
 
 ## Prerequisites
 
-- Terraform ≥ 1.5
+- Terraform ≥ 1.10
 - Stage 1 applied — deployer role ARN available from `environments/iam/` outputs
 - AWS credentials that can assume the deployer role
 
@@ -64,6 +64,7 @@ environments/dev/
 ├── main.tf           # Provider config (with optional assume_role) and ECR module call
 ├── variables.tf      # Input variables
 ├── terraform.tfvars  # Variable values (do not commit sensitive values)
+├── ssm.tf            # Publishes ECR URLs and role ARNs to SSM Parameter Store
 └── outputs.tf        # Repository URLs, ARNs, and GitHub Actions role ARN
 ```
 
@@ -71,7 +72,7 @@ environments/dev/
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| `aws_region` | string | `eu-west-2` | AWS region |
+| `aws_region` | string | `ap-east-1` | AWS region |
 | `github_org` | string | — | GitHub organisation name |
 | `github_allowed_repos` | list(string) | — | Repos allowed to push images via OIDC |
 | `repositories` | map(object) | — | ECR repositories to create |

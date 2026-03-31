@@ -72,6 +72,8 @@ reusable permission-set data sources for each AWS service area:
 | `pset_vpc_manage` | VPCs, subnets, route tables, internet gateways |
 | `pset_iam_service_roles` | IAM roles and policies for services (not users) |
 | `pset_sts_caller_identity` | Read current AWS identity |
+| `pset_s3_team_state` | Scoped read/write to the team's own state prefix in the shared S3 bucket |
+| `pset_ssm_shared_read` | Read-only access to shared-services SSM outputs under the platform namespace |
 
 Teams compose their role policy using `source_policy_documents`:
 
@@ -185,11 +187,13 @@ The `environments/iam/` directory lives alongside the service environments in th
 
 **Design for extractability:**
 
-Environments do not reference each other's Terraform state directly. The deployer role ARN
-is a plain variable (`terraform_role_arn`) set by the developer or CI — it can be sourced
-from a `terraform output` call, AWS SSM Parameter Store, or a CI secret. This mechanism
-works identically in a same-repo and a separate-repo topology, so extraction requires only
-moving files and updating CI pipeline paths — no Terraform code changes.
+`iam/` and `dev/` read a small number of outputs from the `core/` state via
+`terraform_remote_state` (the S3 bucket name and SSM namespace ID). The deployer role ARN
+passed to `dev/` is a plain variable (`terraform_role_arn`) set by the developer or CI —
+it can be sourced from a `terraform output` call, SSM Parameter Store, or a CI secret.
+Extracting `iam/` to a separate repository requires only moving files, updating CI pipeline
+paths, and replacing the `terraform_remote_state.core` references with equivalent SSM
+lookups or variables — no structural Terraform changes.
 
 ## Role naming and tagging conventions
 

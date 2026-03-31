@@ -97,6 +97,7 @@ environments/core/
 
 | Output | Description |
 | --- | --- |
+| `ssm_namespace_id` | 6-character hex namespace ID used to scope all shared-services SSM parameters |
 | `state_bucket_name` | S3 bucket name — needed for `backend.hcl` in all environments |
 | `ci_pipeline_role_arn` | ARN for the `CI_PIPELINE_ROLE_ARN` GitHub Secret |
 | `next_steps` | Guidance on completing the bootstrap |
