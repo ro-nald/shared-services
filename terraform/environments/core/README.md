@@ -89,12 +89,13 @@ terraform import aws_iam_openid_connect_provider.github "$OIDC_ARN"
 
 ```text
 environments/core/
-├── main.tf          # Provider config + empty backend "s3" {}
-├── state.tf         # S3 bucket
-├── oidc.tf          # GitHub OIDC provider
-├── ci.tf            # ci-pipeline IAM role
+├── main.tf                    # Provider config + empty backend "s3" {}
+├── state.tf                   # S3 bucket
+├── oidc.tf                    # GitHub OIDC provider
+├── ci.tf                      # ci-pipeline IAM role
 ├── variables.tf
-├── terraform.tfvars
+├── terraform.tfvars           # gitignored — copy from terraform.tfvars.example
+├── terraform.tfvars.example   # committed template for local configuration
 └── outputs.tf
 ```
 
