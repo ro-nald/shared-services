@@ -18,6 +18,11 @@ never managed by CI** — it creates the CI role itself.
 - AWS CLI with admin-level credentials (`AdministratorAccess` or equivalent)
 - `gh` CLI ≥ 2.x (for `configure-github` step)
 - `uv` (runs the bootstrap CLI — installs Python and dependencies automatically)
+- A local `terraform.tfvars` (gitignored — copy from the example and set `github_org`):
+
+  ```bash
+  cp terraform/environments/core/terraform.tfvars.example terraform/environments/core/terraform.tfvars
+  ```
 
 ## Applying (guided)
 
