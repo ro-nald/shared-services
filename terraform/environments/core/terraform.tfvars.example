@@ -1,0 +1,14 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is gitignored — never commit it.
+#
+# In CI, github_org is sourced automatically from github.repository_owner.
+# Locally, set it to your GitHub username or organisation.
+
+aws_region  = "ap-east-1"
+github_org  = ""            # e.g. "ro-nald" or "acme-corp"
+github_repo = "shared-services"
+
+tags = {
+  Team      = "platform"
+  ManagedBy = "terraform"
+}

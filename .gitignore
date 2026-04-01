@@ -9,6 +9,9 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
+# Per-developer local variable overrides — copy from terraform.tfvars.example and edit
+terraform/environments/core/terraform.tfvars
+
 # Backend config files — generated per-developer by the bootstrap CLI, never committed
 **/backend.hcl
 
