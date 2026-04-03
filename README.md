@@ -27,6 +27,12 @@ scripts/
 - [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) ≥ 2.x, configured with credentials. For the first-ever bootstrap, use an admin SSO permission set. For subsequent re-runs of `apply-core`, use the `platform-bootstrap` IAM role (see [Re-running apply-core](#re-running-apply-core))
 - [gh CLI](https://cli.github.com/) ≥ 2.x
 - [uv](https://docs.astral.sh/uv/) (runs the bootstrap CLI — installs Python and dependencies automatically)
+- [pre-commit](https://pre-commit.com/) (optional but recommended — regenerates lock files automatically on commit):
+
+  ```bash
+  pip install pre-commit
+  pre-commit install
+  ```
 
 ## Getting started
 
@@ -127,6 +133,7 @@ in `iam/` (defaults to allowing any principal in the account).
 After bootstrap, pull requests trigger:
 
 - **fmt** — `terraform fmt -check`
+- **lock-files** — verifies `.terraform.lock.hcl` files cover all target platforms
 - **validate-iam / validate-dev** — syntax validation (no AWS credentials needed)
 - **plan-iam** — plan with OPA/Conftest policy gate (path-filtered to `iam/**`)
 - **plan-dev** — plan (path-filtered to `dev/**`)
@@ -161,6 +168,31 @@ uv run team-bootstrap/main.py run \
 
 This generates `backend.hcl` for the team's own Terraform state and writes all required
 GitHub Actions variables and secrets to their repository.
+
+## Updating providers
+
+Lock files are committed for all environments. They pin provider versions and include
+checksums for `linux_amd64`, `darwin_arm64`, and `darwin_amd64` so CI does not need
+to re-download or modify them at runtime.
+
+When bumping a provider version, regenerate the lock file for all target platforms:
+
+```bash
+cd terraform/environments/<env>
+terraform providers lock \
+  -platform=linux_amd64 \
+  -platform=darwin_arm64 \
+  -platform=darwin_amd64
+```
+
+Commit the updated `.terraform.lock.hcl` alongside the version change.
+
+If you have `pre-commit` installed, this runs automatically on `git commit` for any
+environment whose lock file has changed. Pull requests are also gated by a `lock-files`
+CI job that fails if the committed lock files do not match the regenerated output.
+
+To bypass the hook for a work-in-progress commit, use `git commit --no-verify`. The
+`lock-files` CI job still enforces correctness on the PR.
 
 ## Further reading
 

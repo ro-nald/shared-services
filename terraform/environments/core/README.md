@@ -116,3 +116,6 @@ environment. Changes require:
 1. Admin AWS credentials
 2. A pull request approved by the platform team
 3. Manual `terraform apply` after merge
+
+If you bump a provider version, regenerate the lock file for all target platforms
+before committing (see [Updating providers](../../../README.md#updating-providers)).

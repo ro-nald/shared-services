@@ -60,6 +60,33 @@ jobs:
         run: terraform fmt -check -recursive terraform/
 
   # ---------------------------------------------------------------------------
+  # lock-files — verify .terraform.lock.hcl files cover all target platforms
+  # ---------------------------------------------------------------------------
+  lock-files:
+    name: Verify lock files
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.10"
+
+      - name: Regenerate lock files
+        run: |
+          for env in core iam dev; do
+            terraform -chdir=terraform/environments/$env init -backend=false
+            terraform -chdir=terraform/environments/$env providers lock \
+              -platform=linux_amd64 \
+              -platform=darwin_arm64 \
+              -platform=darwin_amd64
+          done
+
+      - name: Check for drift
+        run: git diff --exit-code '**/.terraform.lock.hcl'
+
+  # ---------------------------------------------------------------------------
   # validate — syntax check without hitting AWS (no credentials needed)
   # ---------------------------------------------------------------------------
   validate-iam:
