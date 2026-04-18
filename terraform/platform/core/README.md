@@ -1,8 +1,8 @@
-# Core Environment
+# Core
 
-Bootstrap infrastructure required by all other environments. This is **Stage 0**
-and must be applied before `iam/` or `dev/`. It is the **only environment that is
-never managed by CI** — it creates the CI role itself.
+Bootstrap infrastructure required by all other stacks. This is **Stage 0** and
+must be applied before `platform/iam/` or any environment. It is the **only stack
+that is never managed by CI** — it creates the CI role itself.
 
 ## What it manages
 
@@ -10,7 +10,30 @@ never managed by CI** — it creates the CI role itself.
 | --- | --- |
 | S3 bucket | Terraform state for all environments (native S3 locking, no DynamoDB) |
 | GitHub OIDC provider | Keyless authentication for GitHub Actions |
-| `ci-pipeline` IAM role | Assumed by CI to apply `iam/` and `dev/` |
+| `ci-pipeline` IAM role | Assumed by CI to apply `platform/iam/` and all environments |
+
+## Why this environment exists
+
+CI cannot create the infrastructure it needs to run — there is a bootstrap
+problem: GitHub Actions requires an IAM role to assume, that role requires an
+OIDC identity provider, and both require Terraform state to be stored somewhere.
+None of that can be provisioned by CI itself.
+
+`core` breaks the cycle by providing exactly three things, applied once by a
+human with admin credentials:
+
+1. **S3 state bucket** — remote state storage shared by all environments; CI
+   needs this to read and write state on every run.
+2. **GitHub OIDC provider** — lets GitHub Actions authenticate to AWS without
+   storing long-lived credentials as GitHub Secrets (keyless auth).
+3. **`ci-pipeline` IAM role** — the identity CI assumes via OIDC; its ARN is
+   stored as `CI_PIPELINE_ROLE_ARN` in GitHub Secrets and used by every apply
+   workflow.
+
+Once `core` is applied, all subsequent stacks (`platform/iam/`, `environments/dev/`, …)
+are managed entirely by CI. `core` itself is never touched by CI — doing so would
+create a circular dependency where CI could accidentally destroy the role it is
+running as.
 
 ## Prerequisites
 
@@ -21,7 +44,7 @@ never managed by CI** — it creates the CI role itself.
 - A local `terraform.tfvars` (gitignored — copy from the example and set `github_org`):
 
   ```bash
-  cp terraform/environments/core/terraform.tfvars.example terraform/environments/core/terraform.tfvars
+  cp terraform/platform/core/terraform.tfvars.example terraform/platform/core/terraform.tfvars
   ```
 
 ## Applying (guided)
@@ -47,7 +70,7 @@ uv run scripts/bootstrap.py configure-github
 If you prefer not to use the CLI:
 
 ```bash
-cd terraform/environments/core
+cd terraform/platform/core
 
 # First run: local backend
 terraform init
@@ -88,7 +111,7 @@ terraform import aws_iam_openid_connect_provider.github "$OIDC_ARN"
 ## File structure
 
 ```text
-environments/core/
+platform/core/
 ├── main.tf                    # Provider config + empty backend "s3" {}
 ├── state.tf                   # S3 bucket
 ├── oidc.tf                    # GitHub OIDC provider
@@ -118,4 +141,4 @@ environment. Changes require:
 3. Manual `terraform apply` after merge
 
 If you bump a provider version, regenerate the lock file for all target platforms
-before committing (see [Updating providers](../../../README.md#updating-providers)).
+before committing (see [Updating providers](../../README.md#updating-providers)).

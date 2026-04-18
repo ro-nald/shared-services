@@ -3,8 +3,7 @@
 Manages shared development infrastructure: ECR repositories and the GitHub Actions OIDC
 role that allows CI/CD pipelines to push container images.
 
-This is **Stage 2**. The IAM bootstrap environment (`environments/iam/`) must be applied
-first.
+This is **Stage 2**. The IAM platform stack (`platform/iam/`) must be applied first.
 
 ## What it manages
 
@@ -17,7 +16,7 @@ first.
 ## Prerequisites
 
 - Terraform ≥ 1.10
-- Stage 1 applied — deployer role ARN available from `environments/iam/` outputs
+- Stage 1 applied — deployer role ARN available from `platform/iam/` outputs
 - AWS credentials that can assume the deployer role
 
 ## Applying (Stage 2)
@@ -31,7 +30,7 @@ provider's `assume_role` block.
 cd terraform/environments/dev
 
 # Copy the deployer role ARN from Stage 1
-ROLE_ARN=$(cd ../iam && terraform output -raw terraform_deployer_dev_role_arn)
+ROLE_ARN=$(cd ../../platform/iam && terraform output -raw terraform_deployer_dev_role_arn)
 
 # Add it to your local tfvars (not committed — add terraform.tfvars to .gitignore)
 echo "terraform_role_arn = \"${ROLE_ARN}\"" >> terraform.tfvars

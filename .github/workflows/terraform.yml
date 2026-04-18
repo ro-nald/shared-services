@@ -38,7 +38,7 @@ jobs:
         with:
           filters: |
             iam:
-              - 'terraform/environments/iam/**'
+              - 'terraform/platform/iam/**'
               - 'terraform/policies/**'
             dev:
               - 'terraform/environments/dev/**'
@@ -75,13 +75,18 @@ jobs:
 
       - name: Regenerate lock files
         run: |
-          for env in core iam dev; do
-            terraform -chdir=terraform/environments/$env init -backend=false
-            terraform -chdir=terraform/environments/$env providers lock \
+          for stack in platform/core platform/iam; do
+            terraform -chdir=terraform/$stack init -backend=false
+            terraform -chdir=terraform/$stack providers lock \
               -platform=linux_amd64 \
               -platform=darwin_arm64 \
               -platform=darwin_amd64
           done
+          terraform -chdir=terraform/environments/dev init -backend=false
+          terraform -chdir=terraform/environments/dev providers lock \
+            -platform=linux_amd64 \
+            -platform=darwin_arm64 \
+            -platform=darwin_amd64
 
       - name: Check for drift
         run: git diff --exit-code '**/.terraform.lock.hcl'
@@ -100,8 +105,8 @@ jobs:
           terraform_version: "~> 1.10"
       - name: Validate
         run: |
-          terraform -chdir=terraform/environments/iam init -backend=false
-          terraform -chdir=terraform/environments/iam validate
+          terraform -chdir=terraform/platform/iam init -backend=false
+          terraform -chdir=terraform/platform/iam validate
 
   validate-dev:
     name: Validate dev
@@ -140,7 +145,7 @@ jobs:
 
       - name: Terraform init
         run: |
-          terraform -chdir=terraform/environments/iam init \
+          terraform -chdir=terraform/platform/iam init \
             -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
             -backend-config="key=iam/terraform.tfstate" \
             -backend-config="region=${{ env.AWS_REGION }}" \
@@ -149,9 +154,9 @@ jobs:
 
       - name: Terraform plan
         run: |
-          terraform -chdir=terraform/environments/iam plan \
+          terraform -chdir=terraform/platform/iam plan \
             -out=tfplan.binary
-          terraform -chdir=terraform/environments/iam show -json tfplan.binary > tfplan.json
+          terraform -chdir=terraform/platform/iam show -json tfplan.binary > tfplan.json
 
       - name: Install Conftest
         env:
@@ -221,7 +226,7 @@ jobs:
 
       - name: Terraform init
         run: |
-          terraform -chdir=terraform/environments/iam init \
+          terraform -chdir=terraform/platform/iam init \
             -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
             -backend-config="key=iam/terraform.tfstate" \
             -backend-config="region=${{ env.AWS_REGION }}" \
@@ -229,7 +234,7 @@ jobs:
             -backend-config="encrypt=true"
 
       - name: Terraform apply
-        run: terraform -chdir=terraform/environments/iam apply -auto-approve
+        run: terraform -chdir=terraform/platform/iam apply -auto-approve
 
   # ---------------------------------------------------------------------------
   # apply-dev — runs after apply-iam succeeds

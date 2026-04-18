@@ -7,9 +7,10 @@ Terraform deployment roles, and supporting AWS services.
 
 ```text
 terraform/
-├── environments/
+├── platform/
 │   ├── core/   # Stage 0 — S3 state bucket, GitHub OIDC provider, CI role (manual only)
-│   ├── iam/    # Stage 1 — IAM deployer roles and governance controls
+│   └── iam/    # Stage 1 — IAM deployer roles and governance controls
+├── environments/
 │   └── dev/    # Stage 2 — Dev environment services (ECR, GitHub OIDC)
 ├── modules/
 │   └── aws/
@@ -60,7 +61,7 @@ CI depends on. Never applied by CI.
 uv run scripts/bootstrap.py apply-core
 ```
 
-See [terraform/environments/core/README.md](terraform/environments/core/README.md)
+See [terraform/platform/core/README.md](terraform/platform/core/README.md)
 for full details, including the manual process if you prefer not to use the CLI.
 
 ### Stage 1 — IAM deployer roles
@@ -74,7 +75,7 @@ uv run scripts/bootstrap.py migrate-state iam
 From this point on, `iam` is applied automatically by CI on every merge to `main`
 (with a required reviewer gate for the `iam-production` GitHub Environment).
 
-See [terraform/environments/iam/README.md](terraform/environments/iam/README.md)
+See [terraform/platform/iam/README.md](terraform/platform/iam/README.md)
 for full details, including how to add a team role.
 
 ### Stage 2 — dev services
@@ -105,7 +106,7 @@ the minimum permissions needed to re-run `apply-core` without admin credentials.
 **1. Get the role ARN** from the `iam/` Terraform outputs:
 
 ```bash
-cd terraform/environments/iam
+cd terraform/platform/iam
 terraform output platform_bootstrap_role_arn
 ```
 
@@ -148,7 +149,7 @@ See [.github/workflows/terraform.yml](.github/workflows/terraform.yml) for the f
 ## Adding a team IAM role
 
 Teams request a dedicated Terraform deployer role by opening a pull request.
-See [terraform/environments/iam/README.md](terraform/environments/iam/README.md#adding-a-team-role).
+See [terraform/platform/iam/README.md](terraform/platform/iam/README.md#adding-a-team-role).
 
 ## Team onboarding
 
@@ -178,7 +179,7 @@ to re-download or modify them at runtime.
 When bumping a provider version, regenerate the lock file for all target platforms:
 
 ```bash
-cd terraform/environments/<env>
+cd terraform/platform/<stack>       # or terraform/environments/<env>
 terraform providers lock \
   -platform=linux_amd64 \
   -platform=darwin_arm64 \

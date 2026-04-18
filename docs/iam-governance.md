@@ -2,7 +2,7 @@
 
 Architectural reference for how Terraform deployer roles are managed in this repository.
 This document explains the _why_ behind the design — for operational how-to, see
-[terraform/environments/iam/README.md](../terraform/environments/iam/README.md).
+[terraform/platform/iam/README.md](../terraform/platform/iam/README.md).
 
 ## Core model
 
@@ -22,26 +22,28 @@ terraform-deployer-<env> / ci-pipeline    (scoped permissions + permission bound
 Terraform environment
 ```
 
-### Three-stage environment structure
+### Three-stage structure
 
 ```text
-terraform/environments/
-├── core/   # Stage 0 — manual only, forever
-│             Creates: S3 state bucket, GitHub OIDC provider, ci-pipeline role
-├── iam/    # Stage 1 — CI-managed after core is applied
-│             Creates: terraform-deployer-* roles and permission boundary
-└── dev/    # Stage 2 — CI-managed after iam is applied
-              Creates: ECR repositories, GitHub Actions ECR push role
+terraform/
+├── platform/
+│   ├── core/   # Stage 0 — manual only, forever
+│   │             Creates: S3 state bucket, GitHub OIDC provider, ci-pipeline role
+│   └── iam/    # Stage 1 — CI-managed after core is applied
+│                 Creates: terraform-deployer-* roles and permission boundary
+└── environments/
+    └── dev/    # Stage 2 — CI-managed after iam is applied
+                  Creates: ECR repositories, GitHub Actions ECR push role
 ```
 
-`core` is the only environment never applied by CI — it creates the CI role itself,
+`core` is the only stack never applied by CI — it creates the CI role itself,
 which would be a circular dependency. Changes to `core` are deliberate, manual,
-platform-team operations. See [terraform/environments/core/README.md](../terraform/environments/core/README.md)
+platform-team operations. See [terraform/platform/core/README.md](../terraform/platform/core/README.md)
 for the one-time bootstrap sequence.
 
 ## Why PR-as-audit-trail (GitOps)
 
-Each team's IAM role definition lives in a file under `terraform/environments/iam/teams/`.
+Each team's IAM role definition lives in a file under `terraform/platform/iam/teams/`.
 Changes to that file can only reach `main` via a pull request that is:
 
 1. Approved by the team lead (proof that the team owns and understands the change)
@@ -123,7 +125,7 @@ Answers: _What permissions were approved, by whom, and when?_
 
 ```bash
 # Full history of a team's role definition
-git log --oneline --follow terraform/environments/iam/teams/team-payments.tf
+git log --oneline --follow terraform/platform/iam/teams/team-payments.tf
 
 # Who approved a specific change
 git show <commit-hash>   # links back to the PR and its reviewers
@@ -167,7 +169,7 @@ Drift alerts when a role is modified outside Terraform (e.g. via the AWS console
 
 ## Same-repo vs separate IAM repo
 
-The `environments/iam/` directory lives alongside the service environments in the same
+The `platform/iam/` directory lives alongside the service environments in the same
 `shared-services` repository. This is an intentional choice for the current project stage.
 
 **Why same repo:**
@@ -187,13 +189,13 @@ The `environments/iam/` directory lives alongside the service environments in th
 
 **Design for extractability:**
 
-`iam/` and `dev/` read a small number of outputs from the `core/` state via
-`terraform_remote_state` (the S3 bucket name and SSM namespace ID). The deployer role ARN
-passed to `dev/` is a plain variable (`terraform_role_arn`) set by the developer or CI —
-it can be sourced from a `terraform output` call, SSM Parameter Store, or a CI secret.
-Extracting `iam/` to a separate repository requires only moving files, updating CI pipeline
-paths, and replacing the `terraform_remote_state.core` references with equivalent SSM
-lookups or variables — no structural Terraform changes.
+`platform/iam/` and `environments/dev/` read a small number of outputs from the `core/`
+state via `terraform_remote_state` (the S3 bucket name and SSM namespace ID). The deployer
+role ARN passed to `dev/` is a plain variable (`terraform_role_arn`) set by the developer
+or CI — it can be sourced from a `terraform output` call, SSM Parameter Store, or a CI
+secret. Extracting `platform/iam/` to a separate repository requires only moving files,
+updating CI pipeline paths, and replacing the `terraform_remote_state.core` references with
+equivalent SSM lookups or variables — no structural Terraform changes.
 
 ## Role naming and tagging conventions
 

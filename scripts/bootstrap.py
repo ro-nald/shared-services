@@ -39,8 +39,8 @@ console = Console()
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CORE_DIR = REPO_ROOT / "terraform" / "environments" / "core"
-IAM_DIR = REPO_ROOT / "terraform" / "environments" / "iam"
+CORE_DIR = REPO_ROOT / "terraform" / "platform" / "core"
+IAM_DIR = REPO_ROOT / "terraform" / "platform" / "iam"
 DEV_DIR = REPO_ROOT / "terraform" / "environments" / "dev"
 STATE_FILE = REPO_ROOT / "scripts" / ".bootstrap-state.json"
 CORE_OVERRIDE = CORE_DIR / "override.tf"
@@ -205,22 +205,24 @@ def apply_core():
 
     CORE_OVERRIDE.write_text('terraform {\n  backend "local" {}\n}\n')
 
+    core_chdir = f"-chdir={CORE_DIR.relative_to(REPO_ROOT)}"
+
     console.print("\n[bold]Initialising core (local backend)...[/bold]")
-    run(["terraform", "-chdir=terraform/environments/core", "init"])
+    run(["terraform", core_chdir, "init"])
 
     console.print("\n[bold]Planning core...[/bold]")
-    run(["terraform", "-chdir=terraform/environments/core", "plan"])
+    run(["terraform", core_chdir, "plan"])
 
     if not click.confirm("\nApply the above plan?", default=False):
         console.print("Aborted.")
         sys.exit(0)
 
     console.print("\n[bold]Applying core...[/bold]")
-    run(["terraform", "-chdir=terraform/environments/core", "apply", "-auto-approve"])
+    run(["terraform", core_chdir, "apply", "-auto-approve"])
 
     console.print("\n[bold]Reading outputs...[/bold]")
     result = run(
-        ["terraform", "-chdir=terraform/environments/core", "output", "-json"],
+        ["terraform", core_chdir, "output", "-json"],
         capture=True,
     )
     outputs = json.loads(result.stdout)
@@ -242,7 +244,7 @@ def apply_core():
     run(
         [
             "terraform",
-            "-chdir=terraform/environments/core",
+            core_chdir,
             "init",
             "-migrate-state",
             "-backend-config=backend.hcl",
@@ -275,7 +277,7 @@ def migrate_state(env):
     run(
         [
             "terraform",
-            f"-chdir=terraform/environments/{env}",
+            f"-chdir={ENV_DIRS[env].relative_to(REPO_ROOT)}",
             "init",
             "-migrate-state",
             "-backend-config=backend.hcl",
