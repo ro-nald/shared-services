@@ -23,15 +23,16 @@ CLI in `platform-tooling` — you do not need to clone or modify this repo direc
 ```text
 terraform/
 ├── platform/
-│   ├── core/   # Stage 0 — S3 state bucket, GitHub OIDC provider, CI role (manual only)
-│   └── iam/    # Stage 1 — IAM deployer roles and governance controls
+│   ├── core/      # Stage 0 — S3 state bucket, GitHub OIDC provider, CI role (manual only)
+│   ├── iam/       # Stage 1 — IAM deployer roles and governance controls
+│   └── registry/  # Stage 2 — Shared ECR container registry
 ├── environments/
-│   └── dev/    # Stage 2 — Dev environment services (ECR, GitHub OIDC)
+│   └── dev/       # Stage 3 — Dev environment services
 ├── modules/
 │   └── aws/
-│       └── ecr/  # Reusable ECR repository module
+│       └── ecr/   # Reusable ECR repository module
 └── policies/
-    └── iam/      # OPA/Conftest policy gates (enforced in CI)
+    └── iam/       # OPA/Conftest policy gates (enforced in CI)
 
 scripts/
 └── bootstrap.py  # Guided one-time setup CLI
@@ -52,7 +53,7 @@ scripts/
 
 ## Getting started
 
-There is a deliberate three-stage apply order. Use the bootstrap CLI to run all steps in one guided sequence:
+There is a deliberate four-stage apply order. Use the bootstrap CLI to run all steps in one guided sequence:
 
 ```bash
 uv run scripts/bootstrap.py run
@@ -93,7 +94,17 @@ From this point on, `iam` is applied automatically by CI on every merge to `main
 See [terraform/platform/iam/README.md](terraform/platform/iam/README.md)
 for full details, including how to add a team role.
 
-### Stage 2 — dev services
+### Stage 2 — shared registry
+
+After iam is applied, migrate the `registry` stack state to S3:
+
+```bash
+uv run scripts/bootstrap.py migrate-state registry
+```
+
+From this point on, `registry` is applied automatically by CI on every merge to `main`.
+
+### Stage 3 — dev environment
 
 ```bash
 uv run scripts/bootstrap.py migrate-state dev
@@ -150,14 +161,16 @@ After bootstrap, pull requests trigger:
 
 - **fmt** — `terraform fmt -check`
 - **lock-files** — verifies `.terraform.lock.hcl` files cover all target platforms
-- **validate-iam / validate-dev** — syntax validation (no AWS credentials needed)
-- **plan-iam** — plan with OPA/Conftest policy gate (path-filtered to `iam/**`)
-- **plan-dev** — plan (path-filtered to `dev/**`)
+- **validate-iam / validate-registry / validate-dev** — syntax validation (no AWS credentials needed)
+- **plan-iam** — plan with OPA/Conftest policy gate (path-filtered to `platform/iam/**`)
+- **plan-registry** — plan (path-filtered to `platform/registry/**`)
+- **plan-dev** — plan (path-filtered to `environments/dev/**`)
 
 Merges to `main` trigger:
 
 - **apply-iam** — pauses for required reviewer approval (`iam-production` environment)
-- **apply-dev** — runs after `apply-iam` succeeds
+- **apply-registry** — runs after `apply-iam` succeeds
+- **apply-dev** — runs after `apply-registry` succeeds
 
 See [.github/workflows/terraform.yml](.github/workflows/terraform.yml) for the full workflow.
 

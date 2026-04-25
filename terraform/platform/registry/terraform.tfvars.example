@@ -1,0 +1,19 @@
+aws_region = "ap-east-1"
+
+github_org = "YOUR_GITHUB_ORG"
+
+github_allowed_repos = [
+  # Repositories allowed to push images, e.g. "service-a", or "*" for all repos in the org
+]
+
+repositories = {
+  "service-a" = {}
+  "service-b" = {
+    tagged_image_count = 5
+  }
+}
+
+tags = {
+  Team      = "platform"
+  ManagedBy = "terraform"
+}

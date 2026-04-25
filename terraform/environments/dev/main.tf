@@ -40,13 +40,3 @@ data "terraform_remote_state" "core" {
   }
 }
 
-module "ecr" {
-  source = "../../modules/aws/ecr"
-
-  aws_region           = var.aws_region
-  github_org           = var.github_org
-  github_allowed_repos = var.github_allowed_repos
-  repositories         = var.repositories
-  tags                 = var.tags
-  create_github_oidc_provider = false
-}

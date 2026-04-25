@@ -41,20 +41,23 @@ console = Console()
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CORE_DIR = REPO_ROOT / "terraform" / "platform" / "core"
 IAM_DIR = REPO_ROOT / "terraform" / "platform" / "iam"
+REGISTRY_DIR = REPO_ROOT / "terraform" / "platform" / "registry"
 DEV_DIR = REPO_ROOT / "terraform" / "environments" / "dev"
 STATE_FILE = REPO_ROOT / "scripts" / ".bootstrap-state.json"
 CORE_OVERRIDE = CORE_DIR / "override.tf"
 
 ENV_DIRS = {
-    "iam": IAM_DIR,
-    "dev": DEV_DIR,
     "core": CORE_DIR,
+    "iam": IAM_DIR,
+    "registry": REGISTRY_DIR,
+    "dev": DEV_DIR,
 }
 
 ENV_KEYS = {
-    "iam": "iam/terraform.tfstate",
-    "dev": "dev/terraform.tfstate",
     "core": "core/terraform.tfstate",
+    "iam": "iam/terraform.tfstate",
+    "registry": "registry/terraform.tfstate",
+    "dev": "dev/terraform.tfstate",
 }
 
 
@@ -257,7 +260,7 @@ def apply_core():
 
 
 @cli.command("migrate-state")
-@click.argument("env", type=click.Choice(["iam", "dev"]))
+@click.argument("env", type=click.Choice(["iam", "registry", "dev"]))
 def migrate_state(env):
     """Migrate an environment's local state to S3. ENV is 'iam' or 'dev'."""
     console.rule(f"[bold]Migrate state — {env}[/bold]")
@@ -327,7 +330,7 @@ def configure_github():
 def run_all():
     """Run the full bootstrap sequence with confirmation prompts."""
     console.rule("[bold]Shared-services bootstrap[/bold]")
-    console.print("This will run: check → apply-core → migrate-state iam → migrate-state dev → configure-github\n")
+    console.print("This will run: check → apply-core → migrate-state iam → migrate-state registry → migrate-state dev → configure-github\n")
 
     ctx = click.get_current_context()
 
@@ -338,6 +341,12 @@ def run_all():
         console.print("Skipped. Run 'migrate-state iam' later.")
     else:
         ctx.invoke(migrate_state, env="iam")
+
+    console.print()
+    if not click.confirm("Migrate registry state to S3?", default=True):
+        console.print("Skipped. Run 'migrate-state registry' later.")
+    else:
+        ctx.invoke(migrate_state, env="registry")
 
     console.print()
     if not click.confirm("Migrate dev state to S3?", default=True):
@@ -362,6 +371,7 @@ def _print_summary():
 
     console.print("\n[green]✓ core applied — state migrated to S3[/green]")
     console.print("[green]✓ iam state migrated to S3[/green]")
+    console.print("[green]✓ registry state migrated to S3[/green]")
     console.print("[green]✓ dev state migrated to S3[/green]")
     if state:
         console.print(f"[green]✓ GitHub Variable and Secret written to {repo}[/green]")
@@ -372,7 +382,7 @@ def _print_summary():
     console.print("       Reviewers: <platform team GitHub handles>")
     console.print(f"       URL:       https://github.com/{repo}/settings/environments\n")
     console.print("  2. Enable branch protection on main:")
-    console.print("       Required status checks: fmt, validate-iam, validate-dev, plan-iam, plan-dev")
+    console.print("       Required status checks: fmt, validate-iam, validate-registry, validate-dev, plan-iam, plan-registry, plan-dev")
     console.print("       Require pull request reviews: yes (enforces CODEOWNERS)")
 
 
@@ -396,7 +406,7 @@ def status():
         table.add_row("core applied", "[yellow]pending[/yellow]", "run apply-core")
 
     # backend.hcl files
-    for env in ("core", "iam", "dev"):
+    for env in ("core", "iam", "registry", "dev"):
         hcl = ENV_DIRS[env] / "backend.hcl"
         if hcl.exists():
             table.add_row(f"{env}/backend.hcl", "[green]✓ exists[/green]", str(hcl.relative_to(REPO_ROOT)))

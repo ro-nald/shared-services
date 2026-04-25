@@ -145,14 +145,13 @@ resource "aws_iam_policy" "team_deployer_boundary" {
 }
 
 # ---------------------------------------------------------------------------
-# dev — permissions for environments/dev
+# registry — permissions for platform/registry
 #
-# Covers: ECR repositories + lifecycle policies, IAM OIDC provider and the
-# GitHub Actions push role created by the ecr module.
+# Covers: ECR repositories + lifecycle policies, IAM push role and policy
+# created by the ecr module.
 # ---------------------------------------------------------------------------
 
-data "aws_iam_policy_document" "terraform_deployer_dev" {
-  # ECR: full management of repositories, lifecycle policies, and images
+data "aws_iam_policy_document" "terraform_deployer_registry" {
   statement {
     sid       = "ECRFull"
     effect    = "Allow"
@@ -160,7 +159,6 @@ data "aws_iam_policy_document" "terraform_deployer_dev" {
     resources = ["*"]
   }
 
-  # IAM: create/manage the OIDC provider and roles that the ECR module owns
   statement {
     sid    = "IAMManage"
     effect = "Allow"
@@ -202,7 +200,59 @@ data "aws_iam_policy_document" "terraform_deployer_dev" {
     resources = ["*"]
   }
 
-  # SSM: publish shared-services dev outputs after apply
+  statement {
+    sid    = "SSMRegistryPublish"
+    effect = "Allow"
+    actions = [
+      "ssm:AddTagsToResource",
+      "ssm:DeleteParameter",
+      "ssm:GetParameter",
+      "ssm:GetParametersByPath",
+      "ssm:ListTagsForResource",
+      "ssm:PutParameter",
+    ]
+    resources = ["arn:aws:ssm:*:*:parameter/shared-services/*/registry/*"]
+  }
+
+  statement {
+    sid       = "STSCallerIdentity"
+    effect    = "Allow"
+    actions   = ["sts:GetCallerIdentity"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_policy" "terraform_deployer_registry" {
+  name        = "terraform-deployer-registry-policy"
+  description = "Permissions for Terraform to deploy the shared container registry"
+  policy      = data.aws_iam_policy_document.terraform_deployer_registry.json
+
+  tags = var.tags
+}
+
+resource "aws_iam_role" "terraform_deployer_registry" {
+  name               = "terraform-deployer-registry"
+  description        = "Assumed by Terraform to deploy the platform container registry"
+  assume_role_policy = data.aws_iam_policy_document.terraform_trust.json
+
+  max_session_duration = 3600
+
+  tags = merge(var.tags, {
+    Purpose = "terraform-deployer"
+    Stack   = "registry"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "terraform_deployer_registry" {
+  role       = aws_iam_role.terraform_deployer_registry.name
+  policy_arn = aws_iam_policy.terraform_deployer_registry.arn
+}
+
+# ---------------------------------------------------------------------------
+# dev — permissions for environments/dev
+# ---------------------------------------------------------------------------
+
+data "aws_iam_policy_document" "terraform_deployer_dev" {
   statement {
     sid    = "SSMDevPublish"
     effect = "Allow"
@@ -217,7 +267,6 @@ data "aws_iam_policy_document" "terraform_deployer_dev" {
     resources = ["arn:aws:ssm:*:*:parameter/shared-services/*/dev/*"]
   }
 
-  # STS: allow Terraform to read its own identity (used by ecr/iam.tf)
   statement {
     sid       = "STSCallerIdentity"
     effect    = "Allow"
@@ -228,7 +277,7 @@ data "aws_iam_policy_document" "terraform_deployer_dev" {
 
 resource "aws_iam_policy" "terraform_deployer_dev" {
   name        = "terraform-deployer-dev-policy"
-  description = "Permissions for Terraform to deploy the dev shared-services environment"
+  description = "Permissions for Terraform to deploy the dev environment"
   policy      = data.aws_iam_policy_document.terraform_deployer_dev.json
 
   tags = var.tags
@@ -236,14 +285,11 @@ resource "aws_iam_policy" "terraform_deployer_dev" {
 
 resource "aws_iam_role" "terraform_deployer_dev" {
   name               = "terraform-deployer-dev"
-  description        = "Assumed by Terraform to deploy the dev shared-services environment"
+  description        = "Assumed by Terraform to deploy the dev environment"
   assume_role_policy = data.aws_iam_policy_document.terraform_trust.json
 
-  # 1-hour session is enough for a typical terraform apply
   max_session_duration = 3600
 
-  # Purpose and Environment are set per-role (not via var.tags) so the CLI can
-  # filter on Purpose=terraform-deployer and display the correct environment label.
   tags = merge(var.tags, {
     Purpose     = "terraform-deployer"
     Environment = "dev"

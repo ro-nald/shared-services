@@ -138,7 +138,8 @@ resource "aws_iam_role_policy_attachment" "team_payments_deployer" {
 | Output | Description |
 |---|---|
 | `aws_account_id` | AWS account ID |
-| `terraform_deployer_dev_role_arn` | ARN of the platform deployer role for the dev environment |
+| `terraform_deployer_registry_role_arn` | ARN of the Terraform deployer role for `platform/registry` |
+| `terraform_deployer_dev_role_arn` | ARN of the Terraform deployer role for `environments/dev` |
 | `platform_bootstrap_role_arn` | ARN of the IAM role for re-running `apply-core` without admin credentials |
 | `next_steps` | Guidance on how to use the role ARN in Stage 2 |
 

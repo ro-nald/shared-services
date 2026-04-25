@@ -9,6 +9,6 @@ output "repository_arns" {
 }
 
 output "github_actions_role_arn" {
-  description = "ARN for GitHub Actions to assume"
+  description = "ARN for GitHub Actions workflows to assume when pushing images"
   value       = module.ecr.github_actions_role_arn
 }
