@@ -1,7 +1,22 @@
 # Shared Services
 
-Platform infrastructure shared across product teams. Manages container registries,
-Terraform deployment roles, and supporting AWS services.
+This repo provisions and manages the AWS platform infrastructure shared across all product
+teams. It owns three things:
+
+- **Container registries** — ECR repositories per environment, with lifecycle policies and
+  keyless GitHub Actions push access
+- **IAM deployer roles** — scoped Terraform roles for each environment and team, governed
+  by a permission boundary and an OPA policy gate in CI
+- **Bootstrap infrastructure** — the S3 state bucket, GitHub OIDC provider, and CI role
+  that everything else depends on
+
+**Platform team:** use this repo to add team roles, provision new environments, and manage
+shared platform resources. See [Adding a team IAM role](#adding-a-team-iam-role) and
+[Getting started](#getting-started).
+
+**Product teams:** consume outputs (ECR URLs, deployer role ARNs) via the team bootstrap
+CLI in `platform-tooling` — you do not need to clone or modify this repo directly. See
+[Team onboarding](#team-onboarding).
 
 ## What's in this repo
 
