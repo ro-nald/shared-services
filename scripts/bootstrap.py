@@ -9,19 +9,25 @@
 Bootstrap CLI for the shared-services Terraform repository.
 
 Guides the one-time setup sequence:
-  1. apply-core   — apply environments/core, migrate its state to S3
-  2. migrate-state iam / dev — migrate each environment's state to S3
+  1. apply-core   — apply platform/core, migrate its state to S3
+  2. migrate-state iam / registry / dev — migrate each environment's state to S3
   3. configure-github — write GitHub Variable and Secret via gh CLI
+
+All commands are idempotent: re-running a completed step is safe. Each step
+refreshes local state from AWS so the JSON stays current even if steps were
+completed outside this CLI.
 
 Run all steps at once:
   uv run scripts/bootstrap.py run
 
-Or check where you are:
+Check where you are:
   uv run scripts/bootstrap.py status
+
+Sync local state file with actual AWS state:
+  uv run scripts/bootstrap.py refresh
 """
 
 import json
-import os
 import re
 import subprocess
 import sys
@@ -45,6 +51,8 @@ REGISTRY_DIR = REPO_ROOT / "terraform" / "platform" / "registry"
 DEV_DIR = REPO_ROOT / "terraform" / "environments" / "dev"
 STATE_FILE = REPO_ROOT / "scripts" / ".bootstrap-state.json"
 CORE_OVERRIDE = CORE_DIR / "override.tf"
+
+AWS_REGION = "ap-east-1"
 
 ENV_DIRS = {
     "core": CORE_DIR,
@@ -87,11 +95,13 @@ def load_state():
 
 
 def save_state(data):
-    data["applied_at"] = datetime.now(timezone.utc).isoformat()
-    STATE_FILE.write_text(json.dumps(data, indent=2) + "\n")
+    existing = load_state() or {}
+    existing.update(data)
+    existing["applied_at"] = datetime.now(timezone.utc).isoformat()
+    STATE_FILE.write_text(json.dumps(existing, indent=2) + "\n")
 
 
-def write_backend_hcl(env, bucket, region="ap-east-1"):
+def write_backend_hcl(env, bucket, region=AWS_REGION):
     """Write a backend.hcl file for the given environment."""
     path = ENV_DIRS[env] / "backend.hcl"
     path.write_text(
@@ -110,10 +120,99 @@ def git_remote_repo():
     if result.returncode != 0:
         return None
     url = result.stdout.strip()
-    # SSH: git@github.com:owner/repo.git
-    # HTTPS: https://github.com/owner/repo.git
+    # SSH: git@github.com:owner/repo.git  HTTPS: https://github.com/owner/repo.git
     match = re.search(r"[:/]([^/]+/[^/]+?)(?:\.git)?$", url)
     return match.group(1) if match else None
+
+
+def _aws_account_id():
+    """Return the current AWS account ID, or None if credentials unavailable."""
+    result = run("aws sts get-caller-identity", capture=True, check=False)
+    if result.returncode != 0:
+        return None
+    try:
+        return json.loads(result.stdout)["Account"]
+    except (json.JSONDecodeError, KeyError):
+        return None
+
+
+def _bucket_name(account_id):
+    return f"shared-services-tfstate-{account_id}"
+
+
+def _read_s3_state_outputs(bucket, key):
+    """
+    Read Terraform outputs from a state file stored in S3.
+    Returns a flat dict {output_name: value} or None on failure.
+    """
+    result = run(
+        ["aws", "s3", "cp", f"s3://{bucket}/{key}", "-", "--region", AWS_REGION],
+        capture=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        state = json.loads(result.stdout)
+        return {name: val.get("value") for name, val in state.get("outputs", {}).items()}
+    except (json.JSONDecodeError, KeyError):
+        return None
+
+
+def _state_key_exists(bucket, key):
+    """Return True if the given S3 key exists (i.e. state has been migrated)."""
+    result = run(
+        ["aws", "s3api", "head-object", "--bucket", bucket, "--key", key, "--region", AWS_REGION],
+        capture=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _refresh_state(silent=False):
+    """
+    Query AWS to rebuild bootstrap state from actual infrastructure.
+    Updates .bootstrap-state.json when the S3 bucket and core state are found.
+    Returns the refreshed state dict, or None if core hasn't been applied yet.
+    """
+    account_id = _aws_account_id()
+    if not account_id:
+        if not silent:
+            console.print("[yellow]Refresh skipped: AWS credentials not available.[/yellow]")
+        return None
+
+    bucket = _bucket_name(account_id)
+
+    bucket_ok = run(
+        ["aws", "s3api", "head-bucket", "--bucket", bucket, "--region", AWS_REGION],
+        capture=True,
+        check=False,
+    ).returncode == 0
+
+    if not bucket_ok:
+        return None
+
+    outputs = _read_s3_state_outputs(bucket, ENV_KEYS["core"])
+    if not outputs:
+        return None
+
+    refreshed = {
+        "state_bucket_name": bucket,
+        "ci_pipeline_role_arn": outputs.get("ci_pipeline_role_arn"),
+        "ssm_namespace_id": outputs.get("ssm_namespace_id"),
+    }
+
+    existing = load_state() or {}
+    changed_keys = [k for k, v in refreshed.items() if existing.get(k) != v]
+
+    if changed_keys:
+        save_state(refreshed)
+        if not silent:
+            console.print(f"[cyan]State refreshed from AWS (updated: {', '.join(changed_keys)})[/cyan]")
+    elif not silent:
+        console.print("[cyan]Local state matches AWS — no changes.[/cyan]")
+
+    return load_state()
 
 
 # ---------------------------------------------------------------------------
@@ -136,11 +235,9 @@ def _run_checks(abort_on_fail=True):
     """Run all prerequisite checks. Returns True if all pass."""
     checks = []
 
-    # Working directory
     is_repo_root = (REPO_ROOT / "terraform").is_dir() and (REPO_ROOT / "scripts").is_dir()
     checks.append(("Repo root", is_repo_root, str(REPO_ROOT)))
 
-    # Terraform >= 1.10
     tf_result = run("terraform version -json", capture=True, check=False)
     tf_ok = False
     tf_detail = "not found"
@@ -154,7 +251,6 @@ def _run_checks(abort_on_fail=True):
             tf_detail = "version parse error"
     checks.append(("Terraform >= 1.10", tf_ok, tf_detail))
 
-    # AWS credentials
     aws_result = run("aws sts get-caller-identity", capture=True, check=False)
     aws_ok = aws_result.returncode == 0
     aws_detail = "not configured"
@@ -166,7 +262,6 @@ def _run_checks(abort_on_fail=True):
             aws_detail = "ok"
     checks.append(("AWS credentials", aws_ok, aws_detail))
 
-    # gh CLI >= 2.x
     gh_result = run("gh --version", capture=True, check=False)
     gh_ok = False
     gh_detail = "not found"
@@ -199,12 +294,47 @@ def _run_checks(abort_on_fail=True):
     return all_pass
 
 
+@cli.command()
+def refresh():
+    """Sync local bootstrap state with actual AWS infrastructure."""
+    console.rule("[bold]Refresh bootstrap state[/bold]")
+    state = _refresh_state(silent=False)
+    if state is None:
+        console.print(
+            "[yellow]Core infrastructure not found in AWS. "
+            "Has apply-core been run?[/yellow]"
+        )
+
+
 @cli.command("apply-core")
 def apply_core():
-    """Apply environments/core and migrate its state to S3."""
+    """Apply platform/core and migrate its state to S3."""
     console.rule("[bold]Step 1 — apply-core[/bold]")
 
     _run_checks(abort_on_fail=True)
+
+    # Clean up any override left by a previous interrupted run.
+    if CORE_OVERRIDE.exists():
+        CORE_OVERRIDE.unlink()
+
+    account_id = _aws_account_id()
+    bucket = _bucket_name(account_id) if account_id else None
+
+    if bucket and _state_key_exists(bucket, ENV_KEYS["core"]):
+        console.print("[green]Core state already exists in S3 — skipping apply.[/green]")
+        state = _refresh_state(silent=True)
+        if not state:
+            console.print(
+                "[red]State key found in S3 but could not read outputs. "
+                "Investigate manually.[/red]"
+            )
+            sys.exit(1)
+        hcl_path = write_backend_hcl("core", state["state_bucket_name"])
+        console.print(f"  backend.hcl: {hcl_path.relative_to(REPO_ROOT)}")
+        core_chdir = f"-chdir={CORE_DIR.relative_to(REPO_ROOT)}"
+        run(["terraform", core_chdir, "init", "-backend-config=backend.hcl"])
+        console.print("\n[green]✓ apply-core already complete.[/green]")
+        return
 
     CORE_OVERRIDE.write_text('terraform {\n  backend "local" {}\n}\n')
 
@@ -217,6 +347,7 @@ def apply_core():
     run(["terraform", core_chdir, "plan"])
 
     if not click.confirm("\nApply the above plan?", default=False):
+        CORE_OVERRIDE.unlink()
         console.print("Aborted.")
         sys.exit(0)
 
@@ -224,10 +355,7 @@ def apply_core():
     run(["terraform", core_chdir, "apply", "-auto-approve"])
 
     console.print("\n[bold]Reading outputs...[/bold]")
-    result = run(
-        ["terraform", core_chdir, "output", "-json"],
-        capture=True,
-    )
+    result = run(["terraform", core_chdir, "output", "-json"], capture=True)
     outputs = json.loads(result.stdout)
     bucket = outputs["state_bucket_name"]["value"]
     ci_role_arn = outputs["ci_pipeline_role_arn"]["value"]
@@ -244,17 +372,15 @@ def apply_core():
     console.print(f"  Written: {hcl_path.relative_to(REPO_ROOT)}")
 
     console.print("\n[bold]Migrating core state to S3...[/bold]")
-    run(
-        [
-            "terraform",
-            core_chdir,
-            "init",
-            "-migrate-state",
-            "-backend-config=backend.hcl",
-        ]
-    )
+    run(["terraform", core_chdir, "init", "-migrate-state", "-backend-config=backend.hcl"])
 
-    save_state({"state_bucket_name": bucket, "ci_pipeline_role_arn": ci_role_arn, "ssm_namespace_id": ssm_namespace_id})
+    save_state(
+        {
+            "state_bucket_name": bucket,
+            "ci_pipeline_role_arn": ci_role_arn,
+            "ssm_namespace_id": ssm_namespace_id,
+        }
+    )
     console.print(f"\n  Bootstrap state saved to {STATE_FILE.relative_to(REPO_ROOT)}")
     console.print("\n[green]✓ core applied and state migrated to S3.[/green]")
 
@@ -262,31 +388,30 @@ def apply_core():
 @cli.command("migrate-state")
 @click.argument("env", type=click.Choice(["iam", "registry", "dev"]))
 def migrate_state(env):
-    """Migrate an environment's local state to S3. ENV is 'iam' or 'dev'."""
+    """Migrate an environment's local state to S3. ENV is 'iam', 'registry', or 'dev'."""
     console.rule(f"[bold]Migrate state — {env}[/bold]")
 
-    state = load_state()
+    state = _refresh_state(silent=True) or load_state()
     if not state:
         console.print("[red]Error: run 'apply-core' first.[/red]")
         sys.exit(1)
 
     bucket = state["state_bucket_name"]
+    env_chdir = f"-chdir={ENV_DIRS[env].relative_to(REPO_ROOT)}"
 
-    console.print(f"\n[bold]Writing {env}/backend.hcl...[/bold]")
     hcl_path = write_backend_hcl(env, bucket)
-    console.print(f"  Written: {hcl_path.relative_to(REPO_ROOT)}")
+    console.print(f"\n  backend.hcl written: {hcl_path.relative_to(REPO_ROOT)}")
+
+    if _state_key_exists(bucket, ENV_KEYS[env]):
+        console.print(
+            f"[green]{env} state already in S3 — skipping migration, running init only.[/green]"
+        )
+        run(["terraform", env_chdir, "init", "-backend-config=backend.hcl"])
+        console.print(f"\n[green]✓ {env} already migrated.[/green]")
+        return
 
     console.print(f"\n[bold]Migrating {env} state to S3...[/bold]")
-    run(
-        [
-            "terraform",
-            f"-chdir={ENV_DIRS[env].relative_to(REPO_ROOT)}",
-            "init",
-            "-migrate-state",
-            "-backend-config=backend.hcl",
-        ]
-    )
-
+    run(["terraform", env_chdir, "init", "-migrate-state", "-backend-config=backend.hcl"])
     console.print(f"\n[green]✓ {env} state migrated to S3.[/green]")
 
 
@@ -295,7 +420,7 @@ def configure_github():
     """Write GitHub Variable and Secret to the repository via gh CLI."""
     console.rule("[bold]Configure GitHub[/bold]")
 
-    state = load_state()
+    state = _refresh_state(silent=True) or load_state()
     if not state:
         console.print("[red]Error: run 'apply-core' first.[/red]")
         sys.exit(1)
@@ -309,7 +434,6 @@ def configure_github():
 
     console.print(f"\n  Repository: {repo}")
 
-    # Check gh auth status; prompt login if needed
     auth_result = run("gh auth status", capture=True, check=False)
     if auth_result.returncode != 0:
         console.print("\n[yellow]gh CLI is not authenticated. Launching gh auth login...[/yellow]")
@@ -330,7 +454,10 @@ def configure_github():
 def run_all():
     """Run the full bootstrap sequence with confirmation prompts."""
     console.rule("[bold]Shared-services bootstrap[/bold]")
-    console.print("This will run: check → apply-core → migrate-state iam → migrate-state registry → migrate-state dev → configure-github\n")
+    console.print(
+        "This will run: check → apply-core → migrate-state iam → "
+        "migrate-state registry → migrate-state dev → configure-github\n"
+    )
 
     ctx = click.get_current_context()
 
@@ -382,7 +509,10 @@ def _print_summary():
     console.print("       Reviewers: <platform team GitHub handles>")
     console.print(f"       URL:       https://github.com/{repo}/settings/environments\n")
     console.print("  2. Enable branch protection on main:")
-    console.print("       Required status checks: fmt, validate-iam, validate-registry, validate-dev, plan-iam, plan-registry, plan-dev")
+    console.print(
+        "       Required status checks: fmt, validate-iam, validate-registry, "
+        "validate-dev, plan-iam, plan-registry, plan-dev"
+    )
     console.print("       Require pull request reviews: yes (enforces CODEOWNERS)")
 
 
@@ -391,44 +521,39 @@ def status():
     """Show current bootstrap progress and remaining steps."""
     console.rule("[bold]Bootstrap status[/bold]")
 
-    state = load_state()
+    state = _refresh_state(silent=True) or load_state()
 
     table = Table(show_header=True, header_style="bold")
     table.add_column("Step")
     table.add_column("Status")
     table.add_column("Detail")
 
-    # Bootstrap state file
     if state:
         detail = f"bucket: {state.get('state_bucket_name', '?')}"
         table.add_row("core applied", "[green]✓ done[/green]", detail)
     else:
         table.add_row("core applied", "[yellow]pending[/yellow]", "run apply-core")
 
-    # backend.hcl files
+    bucket = state.get("state_bucket_name") if state else None
+    for env in ("core", "iam", "registry", "dev"):
+        if bucket:
+            if _state_key_exists(bucket, ENV_KEYS[env]):
+                table.add_row(f"{env} state in S3", "[green]✓ exists[/green]", ENV_KEYS[env])
+            else:
+                hint = "run apply-core" if env == "core" else f"run migrate-state {env}"
+                table.add_row(f"{env} state in S3", "[yellow]missing[/yellow]", hint)
+        else:
+            table.add_row(f"{env} state in S3", "[yellow]unknown[/yellow]", "apply-core first")
+
     for env in ("core", "iam", "registry", "dev"):
         hcl = ENV_DIRS[env] / "backend.hcl"
         if hcl.exists():
-            table.add_row(f"{env}/backend.hcl", "[green]✓ exists[/green]", str(hcl.relative_to(REPO_ROOT)))
+            table.add_row(
+                f"{env}/backend.hcl", "[green]✓ exists[/green]", str(hcl.relative_to(REPO_ROOT))
+            )
         else:
             table.add_row(f"{env}/backend.hcl", "[yellow]missing[/yellow]", "not yet generated")
 
-    # S3 bucket accessibility
-    if state and state.get("state_bucket_name"):
-        bucket = state["state_bucket_name"]
-        s3_result = run(
-            ["aws", "s3", "ls", f"s3://{bucket}"],
-            capture=True,
-            check=False,
-        )
-        if s3_result.returncode == 0:
-            table.add_row("S3 bucket", "[green]✓ accessible[/green]", bucket)
-        else:
-            table.add_row("S3 bucket", "[red]✗ not accessible[/red]", bucket)
-    else:
-        table.add_row("S3 bucket", "[yellow]unknown[/yellow]", "apply-core first")
-
-    # gh auth
     gh_result = run("gh auth status", capture=True, check=False)
     if gh_result.returncode == 0:
         table.add_row("gh CLI auth", "[green]✓ authenticated[/green]", "")

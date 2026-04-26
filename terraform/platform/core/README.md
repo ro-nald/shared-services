@@ -61,8 +61,17 @@ Or step by step:
 uv run scripts/bootstrap.py check           # verify prerequisites
 uv run scripts/bootstrap.py apply-core      # apply + migrate core state to S3
 uv run scripts/bootstrap.py migrate-state iam
+uv run scripts/bootstrap.py migrate-state registry
 uv run scripts/bootstrap.py migrate-state dev
 uv run scripts/bootstrap.py configure-github
+```
+
+All commands are idempotent — re-running a completed step is safe. If you need
+to resync the local state file (`.bootstrap-state.json`) with what is actually
+in AWS (e.g. after running steps on another machine), run:
+
+```bash
+uv run scripts/bootstrap.py refresh
 ```
 
 ## Applying (manual)
