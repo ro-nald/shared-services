@@ -2,8 +2,7 @@
 
 Manages dev-environment-specific AWS infrastructure.
 
-This is **Stage 3**. `platform/iam/` (Stage 1) and `platform/registry/` (Stage 2) must
-be applied first.
+Requires `platform/iam/` and `platform/registry/` to be applied first.
 
 ## What it manages
 
@@ -13,10 +12,10 @@ and is consumed by all environments — add repositories there, not here.
 ## Prerequisites
 
 - Terraform ≥ 1.10
-- Stage 1 applied — deployer role ARN available from `platform/iam/` outputs
+- `platform/iam/` applied — deployer role ARN available from its outputs
 - AWS credentials that can assume the deployer role
 
-## Applying (Stage 3)
+## Applying
 
 ### Path A — TFVars (recommended)
 
@@ -26,7 +25,7 @@ provider's `assume_role` block.
 ```bash
 cd terraform/environments/dev
 
-# Copy the deployer role ARN from Stage 1
+# Copy the deployer role ARN from platform/iam
 ROLE_ARN=$(cd ../../platform/iam && terraform output -raw terraform_deployer_dev_role_arn)
 
 # Add it to your local tfvars
@@ -63,7 +62,7 @@ environments/dev/
 ## Variables reference
 
 | Variable | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `aws_region` | string | `ap-east-1` | AWS region |
 | `tags` | map(string) | `{}` | Common resource tags |
-| `terraform_role_arn` | string | `""` | Deployer role ARN from Stage 1 (Path A) |
+| `terraform_role_arn` | string | `""` | Deployer role ARN from `platform/iam` (Path A) |

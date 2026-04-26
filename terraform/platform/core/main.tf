@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# STAGE 0 — core bootstrap (manual only — never applied by CI)
+# core — bootstrap (manual only — never applied by CI)
 #
 # Apply once with admin credentials. Creates:
 #   - S3 state bucket shared by all environments

@@ -1,8 +1,8 @@
 # -----------------------------------------------------------------------------
-# STAGE 1 — IAM deployer roles
+# iam — IAM deployer roles
 #
-# Run after platform/core/ has been applied. Creates the Terraform deployer
-# roles that environments/dev/ assumes when deploying services.
+# Requires platform/core/ to have been applied first. Creates the Terraform
+# deployer roles assumed by platform/registry/ and all environments.
 #
 # In CI this stack is applied by the ci-pipeline role (created in core/).
 # For local development, use the bootstrap CLI:

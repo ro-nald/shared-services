@@ -22,18 +22,18 @@ terraform-deployer-<env> / ci-pipeline    (scoped permissions + permission bound
 Terraform environment
 ```
 
-### Three-stage structure
+### Stack structure and dependencies
 
 ```text
 terraform/
 ├── platform/
-│   ├── core/   # Stage 0 — manual only, forever
-│   │             Creates: S3 state bucket, GitHub OIDC provider, ci-pipeline role
-│   └── iam/    # Stage 1 — CI-managed after core is applied
-│                 Creates: terraform-deployer-* roles and permission boundary
+│   ├── core/      # manual only — S3 state bucket, GitHub OIDC provider, ci-pipeline role
+│   │                ↓ (all stacks depend on core)
+│   ├── iam/       # CI-managed — terraform-deployer-* roles and permission boundary
+│   │                ↓ (registry and environments depend on iam for deployer roles)
+│   └── registry/  # CI-managed — shared ECR repositories, GitHub Actions push role
 └── environments/
-    └── dev/    # Stage 2 — CI-managed after iam is applied
-                  Creates: ECR repositories, GitHub Actions ECR push role
+    └── dev/       # CI-managed — dev-specific resources
 ```
 
 `core` is the only stack never applied by CI — it creates the CI role itself,
@@ -56,7 +56,7 @@ permission change: who proposed it, who approved it, when it merged, and the exa
 Alternatives considered:
 
 | Alternative | Why not chosen |
-|---|---|
+| --- | --- |
 | Platform team owns all role changes | Creates a bottleneck; removes team accountability |
 | Self-service portal (Backstage, Port) | Higher complexity, duplicates what a PR already provides |
 | Terraform Cloud audit logs | Adds value at scale but not needed at current project size |
@@ -67,7 +67,7 @@ Teams do not write raw IAM actions. Instead, `permission-sets.tf` (platform-owne
 reusable permission-set data sources for each AWS service area:
 
 | Data source | Services covered |
-|---|---|
+| --- | --- |
 | `pset_ecr_manage` | ECR repositories and images |
 | `pset_s3_manage` | S3 buckets and objects |
 | `pset_ec2_manage` | EC2 instances, AMIs, security groups |
@@ -200,7 +200,7 @@ equivalent SSM lookups or variables — no structural Terraform changes.
 ## Role naming and tagging conventions
 
 | Attribute | Convention | Example |
-|---|---|---|
+| --- | --- | --- |
 | Role name | `terraform-deployer-<team>` | `terraform-deployer-team-payments` |
 | Policy name | `terraform-deployer-<team>-policy` | `terraform-deployer-team-payments-policy` |
 | Tag: `Purpose` | `terraform-deployer` | (used by role-picker CLI for discovery) |

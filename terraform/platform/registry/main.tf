@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
-# STAGE 2 — Shared container registry
+# registry — Shared container registry
 #
-# Run after platform/core/ and platform/iam/ have been applied. Owns all ECR
+# Requires platform/core/ and platform/iam/ to have been applied first. Owns all ECR
 # repositories and the GitHub Actions push role. Shared across all environments
 # — images are built once and promoted by tag/digest, not copied between repos.
 #

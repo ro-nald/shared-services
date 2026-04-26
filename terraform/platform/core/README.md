@@ -1,8 +1,8 @@
 # Core
 
-Bootstrap infrastructure required by all other stacks. This is **Stage 0** and
-must be applied before `platform/iam/` or any environment. It is the **only stack
-that is never managed by CI** — it creates the CI role itself.
+Bootstrap infrastructure required by all other stacks. Must be applied before
+`platform/iam/` or any environment. It is the **only stack that is never managed
+by CI** — it creates the CI role itself.
 
 ## What it manages
 
