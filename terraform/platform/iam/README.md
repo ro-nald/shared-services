@@ -139,9 +139,12 @@ resource "aws_iam_role_policy_attachment" "team_payments_deployer" {
 | --- | --- |
 | `aws_account_id` | AWS account ID |
 | `terraform_deployer_registry_role_arn` | ARN of the Terraform deployer role for `platform/registry` |
-| `terraform_deployer_dev_role_arn` | ARN of the Terraform deployer role for `environments/dev` |
 | `platform_bootstrap_role_arn` | ARN of the IAM role for re-running `apply-core` without admin credentials |
 | `next_steps` | Guidance on next steps after applying |
+
+Environment deployer role ARNs (`terraform-deployer-dev`, etc.) are outputs of the
+`account-bootstrap` stack — each role lives in the workload account it deploys into.
+See [terraform/account-bootstrap/README.md](../../account-bootstrap/README.md).
 
 ## Discovering roles (role-picker CLI)
 

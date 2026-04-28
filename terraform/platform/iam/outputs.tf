@@ -8,10 +8,9 @@ output "terraform_deployer_registry_role_arn" {
   value       = aws_iam_role.terraform_deployer_registry.arn
 }
 
-output "terraform_deployer_dev_role_arn" {
-  description = "ARN of the Terraform deployer role for the dev environment"
-  value       = aws_iam_role.terraform_deployer_dev.arn
-}
+# Environment deployer role ARNs (terraform-deployer-dev, etc.) are outputs
+# of the account-bootstrap stack, not this stack. Each lives in the workload
+# account it deploys into. See terraform/account-bootstrap/.
 
 output "platform_bootstrap_role_arn" {
   description = "ARN of the IAM role for re-running the core bootstrap (apply-core)"

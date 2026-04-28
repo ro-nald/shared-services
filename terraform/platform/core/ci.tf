@@ -155,6 +155,26 @@ data "aws_iam_policy_document" "ci_pipeline" {
     actions   = ["sts:GetCallerIdentity"]
     resources = ["*"]
   }
+
+  # -------------------------------------------------------------------------
+  # STS — assume terraform-deployer-* roles in workload accounts (dev, etc.)
+  #
+  # Scoped to var.workload_account_ids so only explicitly enrolled accounts
+  # can be targeted. Add an account via bootstrap-account, then add its ID
+  # to workload_account_ids in terraform.tfvars and re-apply core.
+  # -------------------------------------------------------------------------
+  dynamic "statement" {
+    for_each = length(var.workload_account_ids) > 0 ? [1] : []
+    content {
+      sid     = "AssumeWorkloadDeployerRoles"
+      effect  = "Allow"
+      actions = ["sts:AssumeRole"]
+      resources = [
+        for account_id in var.workload_account_ids :
+        "arn:aws:iam::${account_id}:role/terraform-deployer-*"
+      ]
+    }
+  }
 }
 
 resource "aws_iam_policy" "ci_pipeline" {

@@ -249,54 +249,13 @@ resource "aws_iam_role_policy_attachment" "terraform_deployer_registry" {
 }
 
 # ---------------------------------------------------------------------------
-# dev — permissions for environments/dev
+# Environment deployer roles (dev, staging, prod, …) are NOT created here.
+#
+# Each workload account gets its own terraform-deployer-<env> role, created
+# once in that account via the account-bootstrap stack:
+#   terraform/account-bootstrap/
+#
+# That role trusts ci-pipeline in the shared-services account. Add the
+# account ID to var.workload_account_ids in platform/core and re-apply core
+# so ci-pipeline gains sts:AssumeRole permission for it.
 # ---------------------------------------------------------------------------
-
-data "aws_iam_policy_document" "terraform_deployer_dev" {
-  statement {
-    sid    = "SSMDevPublish"
-    effect = "Allow"
-    actions = [
-      "ssm:AddTagsToResource",
-      "ssm:DeleteParameter",
-      "ssm:GetParameter",
-      "ssm:GetParametersByPath",
-      "ssm:ListTagsForResource",
-      "ssm:PutParameter",
-    ]
-    resources = ["arn:aws:ssm:*:*:parameter/shared-services/*/dev/*"]
-  }
-
-  statement {
-    sid       = "STSCallerIdentity"
-    effect    = "Allow"
-    actions   = ["sts:GetCallerIdentity"]
-    resources = ["*"]
-  }
-}
-
-resource "aws_iam_policy" "terraform_deployer_dev" {
-  name        = "terraform-deployer-dev-policy"
-  description = "Permissions for Terraform to deploy the dev environment"
-  policy      = data.aws_iam_policy_document.terraform_deployer_dev.json
-
-  tags = var.tags
-}
-
-resource "aws_iam_role" "terraform_deployer_dev" {
-  name               = "terraform-deployer-dev"
-  description        = "Assumed by Terraform to deploy the dev environment"
-  assume_role_policy = data.aws_iam_policy_document.terraform_trust.json
-
-  max_session_duration = 3600
-
-  tags = merge(var.tags, {
-    Purpose     = "terraform-deployer"
-    Environment = "dev"
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "terraform_deployer_dev" {
-  role       = aws_iam_role.terraform_deployer_dev.name
-  policy_arn = aws_iam_policy.terraform_deployer_dev.arn
-}

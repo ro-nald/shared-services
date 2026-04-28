@@ -11,29 +11,34 @@ permissions that environment needs. No environment shares a role or uses long-li
 admin credentials.
 
 ```text
-Developer / CI
-     │
-     │  sts:AssumeRole / sts:AssumeRoleWithWebIdentity (OIDC)
+GitHub Actions (OIDC)
+     │  sts:AssumeRoleWithWebIdentity
      ▼
-terraform-deployer-<env> / ci-pipeline    (scoped permissions + permission boundary)
-     │
+ci-pipeline  (shared-services account)
+     │  sts:AssumeRole  (cross-account, scoped to enrolled workload_account_ids)
+     ▼
+terraform-deployer-<env>  (workload account, permission boundary applied)
      │  applies
      ▼
-Terraform environment
+Environment resources  (workload account)
 ```
+
+See [multi-account.md](multi-account.md) for the full account structure and
+how to enrol a new workload account.
 
 ### Stack structure and dependencies
 
 ```text
 terraform/
 ├── platform/
-│   ├── core/      # manual only — S3 state bucket, GitHub OIDC provider, ci-pipeline role
-│   │                ↓ (all stacks depend on core)
-│   ├── iam/       # CI-managed — terraform-deployer-* roles and permission boundary
-│   │                ↓ (registry and environments depend on iam for deployer roles)
-│   └── registry/  # CI-managed — shared ECR repositories, GitHub Actions push role
+│   ├── core/             # manual only — S3 state bucket, OIDC provider, ci-pipeline role
+│   │                       ↓ (all stacks depend on core)
+│   ├── iam/              # CI-managed — shared-services deployer roles and permission boundary
+│   │                       ↓ (registry depends on iam; workload accounts depend on account-bootstrap)
+│   └── registry/         # CI-managed — shared ECR repositories, GitHub Actions push role
+├── account-bootstrap/    # manual, once per account — creates terraform-deployer-<env> in workload account
 └── environments/
-    └── dev/       # CI-managed — dev-specific resources
+    └── dev/              # CI-managed — dev resources, deployed cross-account into the dev account
 ```
 
 `core` is the only stack never applied by CI — it creates the CI role itself,

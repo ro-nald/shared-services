@@ -23,16 +23,17 @@ CLI in `platform-tooling` — you do not need to clone or modify this repo direc
 ```text
 terraform/
 ├── platform/
-│   ├── core/      # Stage 0 — S3 state bucket, GitHub OIDC provider, CI role (manual only)
-│   ├── iam/       # Stage 1 — IAM deployer roles and governance controls
-│   └── registry/  # Stage 2 — Shared ECR container registry
+│   ├── core/             # Stage 0 — S3 state bucket, GitHub OIDC provider, CI role (manual only)
+│   ├── iam/              # Stage 1 — IAM deployer roles and governance controls
+│   └── registry/         # Stage 2 — Shared ECR container registry
+├── account-bootstrap/    # Run once per workload account — creates cross-account deployer role
 ├── environments/
-│   └── dev/       # Stage 3 — Dev environment services
+│   └── dev/              # Stage 3 — Dev environment (deployed cross-account into dev AWS account)
 ├── modules/
 │   └── aws/
-│       └── ecr/   # Reusable ECR repository module
+│       └── ecr/          # Reusable ECR repository module
 └── policies/
-    └── iam/       # OPA/Conftest policy gates (enforced in CI)
+    └── iam/              # OPA/Conftest policy gates (enforced in CI)
 
 scripts/
 └── bootstrap.py  # Guided one-time setup CLI
@@ -223,7 +224,22 @@ CI job that fails if the committed lock files do not match the regenerated outpu
 To bypass the hook for a work-in-progress commit, use `git commit --no-verify`. The
 `lock-files` CI job still enforces correctness on the PR.
 
+## Adding a workload account (dev, staging, prod)
+
+Each environment runs in its own AWS account. After creating the account via
+Control Tower Account Factory, bootstrap it with:
+
+```bash
+uv run scripts/bootstrap.py bootstrap-account --account-id <id> --env <env>
+```
+
+Then add the account ID to `workload_account_ids` in `platform/core/terraform.tfvars`
+and open a pull request. See [docs/multi-account.md](docs/multi-account.md) for the
+full walkthrough.
+
 ## Further reading
 
+- [Multi-Account Architecture](docs/multi-account.md) — account structure, trust chain,
+  and how to add new workload accounts
 - [IAM Governance](docs/iam-governance.md) — governance patterns, auditing strategy,
   and the rationale behind key design decisions

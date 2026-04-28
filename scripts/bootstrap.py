@@ -49,6 +49,7 @@ CORE_DIR = REPO_ROOT / "terraform" / "platform" / "core"
 IAM_DIR = REPO_ROOT / "terraform" / "platform" / "iam"
 REGISTRY_DIR = REPO_ROOT / "terraform" / "platform" / "registry"
 DEV_DIR = REPO_ROOT / "terraform" / "environments" / "dev"
+ACCOUNT_BOOTSTRAP_DIR = REPO_ROOT / "terraform" / "account-bootstrap"
 STATE_FILE = REPO_ROOT / "scripts" / ".bootstrap-state.json"
 CORE_OVERRIDE = CORE_DIR / "override.tf"
 
@@ -448,6 +449,87 @@ def configure_github():
     console.print(f"  CI_PIPELINE_ROLE_ARN = {ci_role_arn}")
 
     console.print(f"\n[green]✓ GitHub Variable and Secret written to {repo}.[/green]")
+
+
+@cli.command("bootstrap-account")
+@click.option("--account-id", required=True, help="AWS account ID of the workload account")
+@click.option("--env", required=True, help="Environment name (e.g. dev, staging, prod)")
+def bootstrap_account(account_id, env):
+    """Create terraform-deployer-<env> in a workload account via OrganizationAccountAccessRole."""
+    console.rule(f"[bold]Bootstrap account — {env} ({account_id})[/bold]")
+
+    state = _refresh_state(silent=True) or load_state()
+    if not state:
+        console.print("[red]Error: run 'apply-core' first to establish the shared-services account.[/red]")
+        sys.exit(1)
+
+    shared_services_account_id = _aws_account_id()
+    if not shared_services_account_id:
+        console.print("[red]Error: AWS credentials not available.[/red]")
+        sys.exit(1)
+
+    console.print(f"\n  Shared-services account : {shared_services_account_id}")
+    console.print(f"  Target account          : {account_id}")
+    console.print(f"  Environment             : {env}")
+
+    # Verify OrganizationAccountAccessRole is assumable
+    console.print("\n[bold]Verifying access to target account...[/bold]")
+    result = run(
+        [
+            "aws", "sts", "assume-role",
+            "--role-arn", f"arn:aws:iam::{account_id}:role/OrganizationAccountAccessRole",
+            "--role-session-name", "account-bootstrap-check",
+        ],
+        capture=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        console.print(
+            f"[red]Cannot assume OrganizationAccountAccessRole in {account_id}.\n"
+            "Ensure current credentials have Organizations access and the account exists.[/red]"
+        )
+        sys.exit(1)
+    console.print("  [green]✓ OrganizationAccountAccessRole is assumable[/green]")
+
+    chdir = f"-chdir={ACCOUNT_BOOTSTRAP_DIR.relative_to(REPO_ROOT)}"
+    common_vars = [
+        f"-var=target_account_id={account_id}",
+        f"-var=environment={env}",
+        f"-var=shared_services_account_id={shared_services_account_id}",
+    ]
+
+    console.print("\n[bold]Initialising account-bootstrap...[/bold]")
+    run(["terraform", chdir, "init", "-reconfigure"])
+
+    console.print("\n[bold]Planning...[/bold]")
+    run(["terraform", chdir, "plan"] + common_vars)
+
+    if not click.confirm(
+        f"\nCreate terraform-deployer-{env} in account {account_id}?", default=False
+    ):
+        console.print("Aborted.")
+        sys.exit(0)
+
+    console.print("\n[bold]Applying...[/bold]")
+    run(["terraform", chdir, "apply", "-auto-approve"] + common_vars)
+
+    result = run(
+        ["terraform", chdir, "output", "-raw", "deployer_role_arn"] + common_vars,
+        capture=True,
+    )
+    role_arn = result.stdout.strip()
+
+    console.print(f"\n  deployer_role_arn = {role_arn}")
+    console.print(f"\n[green]✓ terraform-deployer-{env} created in {account_id}.[/green]")
+    console.print("\n[bold]Next steps:[/bold]")
+    console.print(
+        f"  1. Add {account_id} to workload_account_ids in "
+        "terraform/platform/core/terraform.tfvars and re-apply platform/core"
+    )
+    console.print(
+        f"  2. Set TF_VAR_terraform_role_arn={role_arn} "
+        f"in the CI workflow for the {env} environment"
+    )
 
 
 @cli.command("run")
