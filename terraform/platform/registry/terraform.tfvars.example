@@ -1,19 +1,10 @@
-aws_region = "ap-east-1"
+# terraform.tfvars — local overrides only (gitignored, never committed)
+#
+# Project configuration (github_org, repositories, etc.) lives in
+# registry.auto.tfvars which IS committed and loaded by both CI and local runs.
+#
+# This file is only needed for local human runs where you want to assume the
+# terraform-deployer-registry role explicitly instead of relying on your
+# current AWS profile.
 
-github_org = "YOUR_GITHUB_ORG"
-
-github_allowed_repos = [
-  # Repositories allowed to push images, e.g. "service-a", or "*" for all repos in the org
-]
-
-repositories = {
-  "service-a" = {}
-  "service-b" = {
-    tagged_image_count = 5
-  }
-}
-
-tags = {
-  Team      = "platform"
-  ManagedBy = "terraform"
-}
+local_deployer_role_arn = ""  # e.g. "arn:aws:iam::123456789012:role/terraform-deployer-registry"

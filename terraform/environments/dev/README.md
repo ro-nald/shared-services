@@ -25,8 +25,8 @@ provider's `assume_role` block.
 ```bash
 cd terraform/environments/dev
 
-# Copy the deployer role ARN from platform/iam
-ROLE_ARN=$(cd ../../platform/iam && terraform output -raw terraform_deployer_dev_role_arn)
+# Copy the deployer role ARN from account-bootstrap (requires local state from bootstrap-account)
+ROLE_ARN=$(cd ../../account-bootstrap && terraform output -raw deployer_role_arn)
 
 # Add it to your local tfvars
 echo "terraform_role_arn = \"${ROLE_ARN}\"" >> terraform.tfvars
@@ -56,7 +56,8 @@ When using Path B, leave `terraform_role_arn` unset (or set it to `""`) in `terr
 environments/dev/
 ├── main.tf           # Provider config with optional assume_role
 ├── variables.tf      # Input variables
-└── terraform.tfvars  # Variable values
+├── dev.auto.tfvars   # Committed project variable values
+└── terraform.tfvars  # Local overrides (gitignored, optional)
 ```
 
 ## Variables reference
@@ -65,4 +66,4 @@ environments/dev/
 | --- | --- | --- | --- |
 | `aws_region` | string | `ap-east-1` | AWS region |
 | `tags` | map(string) | `{}` | Common resource tags |
-| `terraform_role_arn` | string | `""` | Deployer role ARN from `platform/iam` (Path A) |
+| `terraform_role_arn` | string | `""` | Deployer role ARN from `account-bootstrap` (Path A) |

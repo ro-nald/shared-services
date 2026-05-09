@@ -25,7 +25,7 @@ provider "aws" {
   region = var.aws_region
 
   dynamic "assume_role" {
-    for_each = var.terraform_role_arn != "" ? [var.terraform_role_arn] : []
+    for_each = var.local_deployer_role_arn != "" ? [var.local_deployer_role_arn] : []
     content {
       role_arn     = assume_role.value
       session_name = "terraform-registry"

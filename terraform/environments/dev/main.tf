@@ -17,7 +17,7 @@ terraform {
 provider "aws" {
   region = var.aws_region
 
-  # Set terraform_role_arn (in terraform.tfvars or via -var) to have Terraform
+  # Set terraform_role_arn (in a local terraform.tfvars or via -var) to have Terraform
   # assume the deployer role created in platform/iam.
   # Leave empty to use the current credentials directly (e.g. during bootstrap).
   dynamic "assume_role" {

@@ -23,7 +23,7 @@ output "next_steps" {
     then proceed via one of the two paths below.
 
     PATH A — TFVars (recommended, credentials never enter the shell):
-      In environments/dev/terraform.tfvars set:
+      In a local environments/dev/terraform.tfvars set:
         terraform_role_arn = "<role_arn>"
       Then run: terraform apply
 

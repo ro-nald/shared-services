@@ -30,8 +30,8 @@ variable "tags" {
   default = {}
 }
 
-variable "terraform_role_arn" {
-  description = "ARN of the IAM role for Terraform to assume. Created by platform/iam. Leave empty to use current credentials directly."
+variable "local_deployer_role_arn" {
+  description = "ARN of the terraform-deployer-registry role to assume for local runs. Leave empty (default) to use current credentials — CI uses ci-pipeline directly and does not set this."
   type        = string
   default     = ""
 }

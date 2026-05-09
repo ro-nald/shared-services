@@ -30,10 +30,10 @@ terraform init -backend-config=backend.hcl
 terraform apply
 ```
 
-After a successful apply, note the deployer role ARN — you will need it for `platform/registry/`:
+After a successful apply, note the registry deployer role ARN — you will need it when running `platform/registry/` locally:
 
 ```bash
-terraform output terraform_deployer_dev_role_arn
+terraform output terraform_deployer_registry_role_arn
 ```
 
 ## File structure
@@ -42,7 +42,7 @@ terraform output terraform_deployer_dev_role_arn
 platform/iam/
 ├── main.tf                   # Provider config and bootstrap comments
 ├── variables.tf              # Input variables
-├── terraform.tfvars          # Variable values
+├── iam.auto.tfvars           # Committed project variable values
 ├── outputs.tf                # Role ARNs and next-steps guidance
 ├── permission-sets.tf        # Platform-owned reusable permission building blocks
 ├── platform-bootstrap.tf     # IAM role for re-running apply-core without admin credentials
