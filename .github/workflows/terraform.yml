@@ -227,6 +227,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [changes]
     if: needs.changes.outputs.dev == 'true'
+    env:
+      TF_VAR_terraform_role_arn: ${{ secrets.TERRAFORM_DEPLOYER_DEV_ARN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -328,6 +330,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: apply-registry
+    env:
+      TF_VAR_terraform_role_arn: ${{ secrets.TERRAFORM_DEPLOYER_DEV_ARN }}
     steps:
       - uses: actions/checkout@v4
 
