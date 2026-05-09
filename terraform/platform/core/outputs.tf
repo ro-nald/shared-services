@@ -11,6 +11,7 @@ output "state_bucket_name" {
 output "ci_pipeline_role_arn" {
   description = "ARN of the IAM role assumed by GitHub Actions CI"
   value       = aws_iam_role.ci_pipeline.arn
+  sensitive   = true
 }
 
 output "next_steps" {

@@ -1,6 +1,7 @@
 output "deployer_role_arn" {
   description = "ARN of the terraform-deployer-<env> role created in the workload account"
   value       = aws_iam_role.deployer.arn
+  sensitive   = true
 }
 
 output "next_steps" {

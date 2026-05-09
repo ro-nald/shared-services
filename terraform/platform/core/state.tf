@@ -54,3 +54,12 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
+
+# Audit trail for state reads and writes. Logs land in the same bucket under
+# s3-access-logs/ so no additional bucket is needed. Useful for incident
+# investigation (who read or wrote state, and when).
+resource "aws_s3_bucket_logging" "terraform_state" {
+  bucket        = aws_s3_bucket.terraform_state.id
+  target_bucket = aws_s3_bucket.terraform_state.id
+  target_prefix = "s3-access-logs/"
+}

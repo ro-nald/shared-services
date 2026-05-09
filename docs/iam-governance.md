@@ -120,6 +120,29 @@ An OPA/Conftest policy gate in CI rejects any team role definition that omits
 `permissions_boundary`. This makes the boundary non-negotiable — a team cannot
 accidentally or intentionally remove it.
 
+### IAM actions in the boundary — design intent
+
+The `BoundaryIAMServiceRoles` statement includes `iam:CreateRole`, `iam:CreatePolicy`,
+`iam:AttachRolePolicy`, and related actions. This is deliberate: teams must be able to
+create IAM roles for their application workloads — Lambda execution roles, ECS task roles,
+GitHub Actions OIDC providers for their own repos, and so on.
+
+**How privilege escalation is prevented:** the `BoundarySTS` statement allows only
+`sts:GetCallerIdentity`. `sts:AssumeRole` is intentionally absent. This means a team
+deployer cannot assume any role it creates — it can provision a Lambda execution role and
+attach policies to it, but it cannot step into that role to gain permissions beyond its own
+boundary. The created role is assumed by the AWS service (Lambda, ECS) at runtime, not
+by the deployer.
+
+The escalation path that would be concerning is:
+
+1. team deployer creates a role with `AdministratorAccess`
+2. team deployer assumes that role
+3. team deployer now has unrestricted access
+
+Step 2 is blocked by the boundary. The role can exist and be assumed by the AWS service
+it is designed for, but the team deployer itself stays within its ceiling.
+
 ## Audit layers
 
 Two complementary layers provide a complete audit trail.
