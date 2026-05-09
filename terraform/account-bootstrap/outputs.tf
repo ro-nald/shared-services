@@ -10,9 +10,10 @@ output "next_steps" {
        terraform/platform/core/terraform.tfvars, then re-apply platform/core
        (or let CI apply it) so ci-pipeline gains sts:AssumeRole permission.
 
-    2. Set the deployer role ARN in your CI workflow for the ${var.environment}
-       environment (GitHub Actions secret or variable):
-         TF_VAR_terraform_role_arn = ${aws_iam_role.deployer.arn}
+    2. Set the deployer role ARN as a GitHub Actions secret:
+         gh secret set TERRAFORM_DEPLOYER_${upper(var.environment)}_ARN \
+           --body "${aws_iam_role.deployer.arn}"
+       CI reads this secret as TF_VAR_terraform_role_arn to assume the role.
 
     3. For human (local) access, add a named profile to ~/.aws/config:
          [profile terraform-${var.environment}]

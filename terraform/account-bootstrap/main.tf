@@ -9,8 +9,9 @@
 #     --account-id <target-account-id> \
 #     --env <env-name>
 #
-# State is stored locally. Keep the generated terraform.tfstate file in a
-# private location (e.g. encrypted storage or a private S3 bucket).
+# State is stored in the shared-services S3 bucket under
+# account-bootstrap-<env>/terraform.tfstate. The CLI writes backend.hcl
+# automatically; see account-bootstrap/README.md for the manual steps.
 # -----------------------------------------------------------------------------
 
 terraform {
@@ -22,6 +23,8 @@ terraform {
       version = "~> 5.0"
     }
   }
+
+  backend "s3" {}
 }
 
 provider "aws" {

@@ -35,12 +35,12 @@ uv run scripts/bootstrap.py bootstrap-account \
   --env dev
 ```
 
-Or manually:
+Or manually (generate `backend.hcl` first — see [State](#state) below):
 
 ```bash
 cd terraform/account-bootstrap
 
-terraform init
+terraform init -backend-config=backend.hcl
 terraform apply \
   -var="target_account_id=<workload-account-id>" \
   -var="environment=dev" \
@@ -59,12 +59,15 @@ terraform apply \
 
    Then re-apply `platform/core/` (or let CI apply it after merging).
 
-2. **Set the deployer role ARN in CI** as a GitHub Actions variable or secret
-   for the environment:
+2. **Set the deployer role ARN as a GitHub Actions secret** so CI can assume
+   it (replace `DEV` with the environment name in uppercase):
 
+   ```bash
+   gh secret set TERRAFORM_DEPLOYER_DEV_ARN \
+     --body "$(terraform output -raw deployer_role_arn)"
    ```
-   TF_VAR_terraform_role_arn = <deployer_role_arn from terraform output>
-   ```
+
+   CI maps this secret to `TF_VAR_terraform_role_arn` in the workflow.
 
 3. **For human (local) access**, add a named profile in `~/.aws/config`:
 
@@ -77,10 +80,24 @@ terraform apply \
 
 ## State
 
-This stack uses local state. The generated `terraform.tfstate` file is
-gitignored — store it in a private location (encrypted disk or a private S3
-bucket). Losing the state does not destroy the role, but re-importing would
-be needed to manage it with Terraform again.
+State is stored in the shared-services S3 bucket under
+`account-bootstrap-<env>/terraform.tfstate` — one key per environment. The
+bootstrap CLI writes `backend.hcl` automatically before each run.
+
+To generate it manually:
+
+```bash
+BUCKET=$(cd ../platform/core && terraform output -raw state_bucket_name)
+cat > backend.hcl <<EOF
+bucket       = "$BUCKET"
+key          = "account-bootstrap-dev/terraform.tfstate"
+region       = "ap-east-1"
+use_lockfile = true
+encrypt      = true
+EOF
+```
+
+Change the `key` for each environment (staging, prod, etc.).
 
 ## Adding human access (IAM Identity Center)
 

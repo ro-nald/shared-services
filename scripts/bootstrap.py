@@ -12,6 +12,7 @@ Guides the one-time setup sequence:
   1. apply-core   — apply platform/core, migrate its state to S3
   2. migrate-state iam / registry / dev — migrate each environment's state to S3
   3. configure-github — write GitHub Variable and Secret via gh CLI
+  4. validate     — confirm AWS resources and GitHub configuration are correct
 
 All commands are idempotent: re-running a completed step is safe. Each step
 refreshes local state from AWS so the JSON stays current even if steps were
@@ -25,6 +26,9 @@ Check where you are:
 
 Sync local state file with actual AWS state:
   uv run scripts/bootstrap.py refresh
+
+Validate deployed resources independently of state files:
+  uv run scripts/bootstrap.py validate
 """
 
 import json
@@ -54,6 +58,7 @@ STATE_FILE = REPO_ROOT / "scripts" / ".bootstrap-state.json"
 CORE_OVERRIDE = CORE_DIR / "override.tf"
 
 AWS_REGION = "ap-east-1"
+_NOT_FOUND = "not found"
 
 ENV_DIRS = {
     "core": CORE_DIR,
@@ -216,6 +221,136 @@ def _refresh_state(silent=False):
     return load_state()
 
 
+def _check_iam_role(role_name):
+    """Return (exists: bool, arn: str) for a named IAM role in the current account."""
+    result = run(["aws", "iam", "get-role", "--role-name", role_name], capture=True, check=False)
+    if result.returncode != 0:
+        return False, ""
+    try:
+        return True, json.loads(result.stdout)["Role"]["Arn"]
+    except (json.JSONDecodeError, KeyError):
+        return True, ""
+
+
+def _checks_core(bucket):
+    """Checks that platform/core resources exist (S3 bucket, OIDC provider, ci-pipeline role)."""
+    checks = []
+
+    r = run(
+        ["aws", "s3api", "head-bucket", "--bucket", bucket, "--region", AWS_REGION],
+        capture=True, check=False,
+    )
+    checks.append(("S3 state bucket", r.returncode == 0, bucket))
+
+    r = run(["aws", "iam", "list-open-id-connect-providers"], capture=True, check=False)
+    oidc_ok = False
+    if r.returncode == 0:
+        try:
+            arns = [p["Arn"] for p in json.loads(r.stdout).get("OpenIDConnectProviderList", [])]
+            oidc_ok = any("token.actions.githubusercontent.com" in a for a in arns)
+        except (json.JSONDecodeError, KeyError):
+            pass
+    checks.append(("GitHub OIDC provider", oidc_ok, "token.actions.githubusercontent.com"))
+
+    ok, arn = _check_iam_role("ci-pipeline")
+    checks.append(("ci-pipeline role", ok, arn or _NOT_FOUND))
+
+    return checks
+
+
+def _checks_iam(account_id):
+    """Checks that platform/iam resources exist (deployer-registry role, boundary policy)."""
+    checks = []
+
+    ok, arn = _check_iam_role("terraform-deployer-registry")
+    checks.append(("terraform-deployer-registry role", ok, arn or _NOT_FOUND))
+
+    if account_id:
+        r = run(
+            ["aws", "iam", "get-policy",
+             "--policy-arn", f"arn:aws:iam::{account_id}:policy/team-deployer-boundary"],
+            capture=True, check=False,
+        )
+        checks.append((
+            "team-deployer-boundary policy",
+            r.returncode == 0,
+            f"arn:aws:iam::{account_id}:policy/team-deployer-boundary",
+        ))
+
+    return checks
+
+
+def _checks_registry():
+    """Checks that platform/registry resources exist (github-ecr-push role)."""
+    ok, arn = _check_iam_role("github-ecr-push")
+    return [("github-ecr-push role", ok, arn or _NOT_FOUND)]
+
+
+def _checks_github(repo):
+    """Checks that required GitHub variables and secrets are set."""
+    if not repo:
+        return []
+    checks = []
+
+    r = run(
+        ["gh", "variable", "list", "--repo", repo, "--json", "name"],
+        capture=True, check=False,
+    )
+    var_names: set = set()
+    if r.returncode == 0:
+        try:
+            var_names = {v["name"] for v in json.loads(r.stdout)}
+        except (json.JSONDecodeError, KeyError):
+            pass
+    checks.append(("GitHub var  TF_STATE_BUCKET", "TF_STATE_BUCKET" in var_names, repo))
+
+    r = run(
+        ["gh", "secret", "list", "--repo", repo, "--json", "name"],
+        capture=True, check=False,
+    )
+    secret_names: set = set()
+    if r.returncode == 0:
+        try:
+            secret_names = {v["name"] for v in json.loads(r.stdout)}
+        except (json.JSONDecodeError, KeyError):
+            pass
+    checks.append(("GitHub secret CI_PIPELINE_ROLE_ARN", "CI_PIPELINE_ROLE_ARN" in secret_names, repo))
+    dev_arn_ok = "TERRAFORM_DEPLOYER_DEV_ARN" in secret_names
+    checks.append((
+        "GitHub secret TERRAFORM_DEPLOYER_DEV_ARN",
+        dev_arn_ok,
+        repo if dev_arn_ok else (
+            "run bootstrap-account first, then: "
+            "gh secret set TERRAFORM_DEPLOYER_DEV_ARN --body <deployer_arn>"
+        ),
+    ))
+
+    return checks
+
+
+def _run_validation_checks(checks, label=""):
+    """Print a Rich table of (name, ok, detail) checks; exit 1 if any fail."""
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Check")
+    table.add_column("Status")
+    table.add_column("Detail")
+
+    all_pass = True
+    for name, ok, detail in checks:
+        status = "[green]✓ pass[/green]" if ok else "[red]✗ fail[/red]"
+        table.add_row(name, status, str(detail))
+        if not ok:
+            all_pass = False
+
+    console.print(table)
+
+    if not all_pass:
+        prefix = f"{label}: " if label else ""
+        console.print(f"[red]{prefix}checks failed — fix the issues above before proceeding.[/red]")
+        sys.exit(1)
+    console.print("[green]✓ All checks passed.[/green]")
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -241,7 +376,7 @@ def _run_checks(abort_on_fail=True):
 
     tf_result = run("terraform version -json", capture=True, check=False)
     tf_ok = False
-    tf_detail = "not found"
+    tf_detail = _NOT_FOUND
     if tf_result.returncode == 0:
         try:
             tf_version = json.loads(tf_result.stdout)["terraform_version"]
@@ -265,7 +400,7 @@ def _run_checks(abort_on_fail=True):
 
     gh_result = run("gh --version", capture=True, check=False)
     gh_ok = False
-    gh_detail = "not found"
+    gh_detail = _NOT_FOUND
     if gh_result.returncode == 0:
         match = re.search(r"(\d+)\.(\d+)", gh_result.stdout)
         if match:
@@ -334,6 +469,8 @@ def apply_core():
         console.print(f"  backend.hcl: {hcl_path.relative_to(REPO_ROOT)}")
         core_chdir = f"-chdir={CORE_DIR.relative_to(REPO_ROOT)}"
         run(["terraform", core_chdir, "init", "-backend-config=backend.hcl"])
+        console.print("\n[bold]Validating core resources...[/bold]")
+        _run_validation_checks(_checks_core(bucket), label="apply-core")
         console.print("\n[green]✓ apply-core already complete.[/green]")
         return
 
@@ -383,6 +520,8 @@ def apply_core():
         }
     )
     console.print(f"\n  Bootstrap state saved to {STATE_FILE.relative_to(REPO_ROOT)}")
+    console.print("\n[bold]Validating core resources...[/bold]")
+    _run_validation_checks(_checks_core(bucket), label="apply-core")
     console.print("\n[green]✓ core applied and state migrated to S3.[/green]")
 
 
@@ -398,6 +537,17 @@ def migrate_state(env):
         sys.exit(1)
 
     bucket = state["state_bucket_name"]
+    account_id = _aws_account_id()
+
+    # Gate: validate all prerequisite stages before migrating this one.
+    pre_checks = _checks_core(bucket)
+    if env in ("registry", "dev"):
+        pre_checks += _checks_iam(account_id)
+    if env == "dev":
+        pre_checks += _checks_registry()
+    console.print("\n[bold]Pre-flight checks...[/bold]")
+    _run_validation_checks(pre_checks, label=f"migrate-state {env}")
+
     env_chdir = f"-chdir={ENV_DIRS[env].relative_to(REPO_ROOT)}"
 
     hcl_path = write_backend_hcl(env, bucket)
@@ -451,6 +601,29 @@ def configure_github():
     console.print(f"\n[green]✓ GitHub Variable and Secret written to {repo}.[/green]")
 
 
+@cli.command("validate")
+def validate():
+    """Confirm deployed AWS resources and GitHub configuration are correct."""
+    console.rule("[bold]Validate deployment[/bold]")
+
+    state = _refresh_state(silent=True) or load_state()
+    if not state:
+        console.print("[red]Core infrastructure not found — run apply-core first.[/red]")
+        sys.exit(1)
+
+    account_id = _aws_account_id()
+    bucket = state.get("state_bucket_name", "")
+    repo = git_remote_repo()
+
+    checks = (
+        _checks_core(bucket)
+        + _checks_iam(account_id)
+        + _checks_registry()
+        + _checks_github(repo)
+    )
+    _run_validation_checks(checks)
+
+
 @cli.command("bootstrap-account")
 @click.option("--account-id", required=True, help="AWS account ID of the workload account")
 @click.option("--env", required=True, help="Environment name (e.g. dev, staging, prod)")
@@ -491,6 +664,7 @@ def bootstrap_account(account_id, env):
         sys.exit(1)
     console.print("  [green]✓ OrganizationAccountAccessRole is assumable[/green]")
 
+    bucket = state["state_bucket_name"]
     chdir = f"-chdir={ACCOUNT_BOOTSTRAP_DIR.relative_to(REPO_ROOT)}"
     common_vars = [
         f"-var=target_account_id={account_id}",
@@ -498,8 +672,22 @@ def bootstrap_account(account_id, env):
         f"-var=shared_services_account_id={shared_services_account_id}",
     ]
 
+    state_key = f"account-bootstrap-{env}/terraform.tfstate"
+    hcl_path = ACCOUNT_BOOTSTRAP_DIR / "backend.hcl"
+    hcl_path.write_text(
+        f'bucket       = "{bucket}"\n'
+        f'key          = "{state_key}"\n'
+        f'region       = "{AWS_REGION}"\n'
+        f"use_lockfile = true\n"
+        f"encrypt      = true\n"
+    )
+    console.print(f"\n  backend.hcl: {hcl_path.relative_to(REPO_ROOT)}")
+
+    local_state = ACCOUNT_BOOTSTRAP_DIR / "terraform.tfstate"
+    init_flags = ["-migrate-state"] if local_state.exists() else ["-reconfigure"]
+
     console.print("\n[bold]Initialising account-bootstrap...[/bold]")
-    run(["terraform", chdir, "init", "-reconfigure"])
+    run(["terraform", chdir, "init"] + init_flags + ["-backend-config=backend.hcl"])
 
     console.print("\n[bold]Planning...[/bold]")
     run(["terraform", chdir, "plan"] + common_vars)
@@ -519,17 +707,24 @@ def bootstrap_account(account_id, env):
     )
     role_arn = result.stdout.strip()
 
+    secret_name = f"TERRAFORM_DEPLOYER_{env.upper()}_ARN"
     console.print(f"\n  deployer_role_arn = {role_arn}")
     console.print(f"\n[green]✓ terraform-deployer-{env} created in {account_id}.[/green]")
     console.print("\n[bold]Next steps:[/bold]")
     console.print(
         f"  1. Add {account_id} to workload_account_ids in "
-        "terraform/platform/core/terraform.tfvars and re-apply platform/core"
+        "terraform/platform/core/terraform.tfvars (gitignored — edit locally),"
     )
+    console.print("     then re-apply core using the platform-bootstrap role:")
     console.print(
-        f"  2. Set TF_VAR_terraform_role_arn={role_arn} "
-        f"in the CI workflow for the {env} environment"
+        "       AWS_PROFILE=platform-bootstrap uv run scripts/bootstrap.py apply-core"
     )
+    console.print("  2. Set the deployer role ARN as a GitHub Actions secret:")
+    console.print(f'       gh secret set {secret_name} --body "{role_arn}"')
+    console.print(
+        f"     This secret is required for CI to deploy the {env} environment."
+    )
+    console.print("     Run 'validate' after setting it to confirm everything is wired up.")
 
 
 @cli.command("run")
@@ -538,7 +733,7 @@ def run_all():
     console.rule("[bold]Shared-services bootstrap[/bold]")
     console.print(
         "This will run: check → apply-core → migrate-state iam → "
-        "migrate-state registry → migrate-state dev → configure-github\n"
+        "migrate-state registry → migrate-state dev → configure-github → validate\n"
     )
 
     ctx = click.get_current_context()
@@ -568,6 +763,12 @@ def run_all():
         console.print("Skipped. Run 'configure-github' later.")
     else:
         ctx.invoke(configure_github)
+
+    console.print()
+    if not click.confirm("Run validation checks?", default=True):
+        console.print("Skipped. Run 'validate' later.")
+    else:
+        ctx.invoke(validate)
 
     _print_summary()
 
