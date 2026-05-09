@@ -21,6 +21,7 @@ output "next_steps" {
 
       uv run scripts/bootstrap.py apply-core   # migrates core state to S3, then:
       uv run scripts/bootstrap.py migrate-state iam
+      uv run scripts/bootstrap.py migrate-state registry
       uv run scripts/bootstrap.py migrate-state dev
       uv run scripts/bootstrap.py configure-github
 

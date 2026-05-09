@@ -58,12 +58,14 @@ uv run scripts/bootstrap.py run
 Or step by step:
 
 ```bash
-uv run scripts/bootstrap.py check           # verify prerequisites
-uv run scripts/bootstrap.py apply-core      # apply + migrate core state to S3
-uv run scripts/bootstrap.py migrate-state iam
-uv run scripts/bootstrap.py migrate-state registry
-uv run scripts/bootstrap.py migrate-state dev
+uv run scripts/bootstrap.py check                  # verify prerequisites
+uv run scripts/bootstrap.py apply-core             # apply + migrate core state to S3
+                                                   # (validates S3 bucket, OIDC provider, ci-pipeline role before returning)
+uv run scripts/bootstrap.py migrate-state iam      # gates on core checks passing
+uv run scripts/bootstrap.py migrate-state registry # gates on core + iam checks passing
+uv run scripts/bootstrap.py migrate-state dev      # gates on core + iam + registry checks passing
 uv run scripts/bootstrap.py configure-github
+uv run scripts/bootstrap.py validate              # full end-to-end check of all AWS resources and GitHub config
 ```
 
 All commands are idempotent — re-running a completed step is safe. If you need
@@ -101,8 +103,8 @@ EOF
 terraform init -migrate-state -backend-config=backend.hcl
 ```
 
-Repeat for `iam/` and `dev/` using `key = "iam/terraform.tfstate"` and
-`key = "dev/terraform.tfstate"` respectively.
+Repeat for `iam/`, `registry/`, and `dev/` using keys `"iam/terraform.tfstate"`,
+`"registry/terraform.tfstate"`, and `"dev/terraform.tfstate"` respectively.
 
 ## If the OIDC provider already exists
 

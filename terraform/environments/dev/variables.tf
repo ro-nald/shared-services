@@ -9,7 +9,7 @@ variable "tags" {
 }
 
 variable "terraform_role_arn" {
-  description = "ARN of the IAM role for Terraform to assume when deploying this environment. Created by platform/iam. Leave empty to use current credentials directly."
+  description = "ARN of the IAM role for Terraform to assume when deploying this environment. Created by account-bootstrap. Leave empty to use current credentials directly."
   type        = string
   default     = ""
 }

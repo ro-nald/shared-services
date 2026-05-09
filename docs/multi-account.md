@@ -80,14 +80,22 @@ that prevents IAM user management, CloudTrail/Config modification, and billing.
 
 ### 3. Enrol the account in ci-pipeline
 
-Add the account ID to `platform/core/terraform.tfvars`:
+Add the account ID to `platform/core/terraform.tfvars` (this file is gitignored
+— edit it locally, do not open a PR for it):
 
 ```hcl
 workload_account_ids = ["<account-id>"]
 ```
 
-Open a pull request. On merge, CI re-applies `platform/core/`, granting
-`ci-pipeline` the `sts:AssumeRole` permission for the new account.
+Then re-apply `platform/core/` using the `platform-bootstrap` role so that
+`ci-pipeline` gains `sts:AssumeRole` permission for the new account:
+
+```bash
+AWS_PROFILE=platform-bootstrap uv run scripts/bootstrap.py apply-core
+```
+
+See [Re-running apply-core](../README.md#re-running-apply-core) for how to
+configure the `platform-bootstrap` AWS profile.
 
 ### 4. Wire up the CI workflow
 
@@ -134,7 +142,7 @@ role_session_name = terraform-dev
 ```
 
 Then run Terraform with `AWS_PROFILE=terraform-dev` or set
-`terraform_role_arn` in `terraform.tfvars`.
+`terraform_role_arn` in a local `terraform.tfvars`.
 
 ## Service Control Policies (SCPs)
 

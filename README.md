@@ -3,8 +3,8 @@
 This repo provisions and manages the AWS platform infrastructure shared across all product
 teams. It owns three things:
 
-- **Container registries** — ECR repositories per environment, with lifecycle policies and
-  keyless GitHub Actions push access
+- **Container registry** — a single shared ECR registry with lifecycle policies and
+  keyless GitHub Actions push access, consumed by all environments
 - **IAM deployer roles** — scoped Terraform roles for each environment and team, governed
   by a permission boundary and an OPA policy gate in CI
 - **Bootstrap infrastructure** — the S3 state bucket, GitHub OIDC provider, and CI role
@@ -42,8 +42,8 @@ scripts/
 ## Prerequisites
 
 - [Terraform](https://developer.hashicorp.com/terraform/install) ≥ 1.10
-- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) ≥ 2.x, configured with credentials. For the first-ever bootstrap, use an admin SSO permission set. For subsequent re-runs of `apply-core`, use the `platform-bootstrap` IAM role (see [Re-running apply-core](#re-running-apply-core))
-- [gh CLI](https://cli.github.com/) ≥ 2.x
+- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) ≥ 2.x, configured with credentials for the **shared-services account**. For the first-ever bootstrap, use an admin SSO permission set. For subsequent re-runs of `apply-core`, use the `platform-bootstrap` IAM role (see [Re-running apply-core](#re-running-apply-core))
+- [gh CLI](https://cli.github.com/) ≥ 2.x, authenticated (`gh auth login`)
 - [uv](https://docs.astral.sh/uv/) (runs the bootstrap CLI — installs Python and dependencies automatically)
 - [pre-commit](https://pre-commit.com/) (optional but recommended — regenerates lock files automatically on commit):
 
@@ -52,12 +52,33 @@ scripts/
   pre-commit install
   ```
 
+- A local `terraform/platform/core/terraform.tfvars` (gitignored — copy from the example and fill in your GitHub org):
+
+  ```bash
+  cp terraform/platform/core/terraform.tfvars.example terraform/platform/core/terraform.tfvars
+  ```
+
+  Set `github_org` to your GitHub username or organisation name.
+
+- Fill in `terraform/platform/registry/registry.auto.tfvars` (committed — edit it directly):
+  set `github_org`, list the repositories allowed to push images (`github_allowed_repos`),
+  and define the ECR repositories to create (`repositories`). This file is loaded
+  automatically by both CI and local runs — commit it once the values are correct.
+
 ## Getting started
 
 There is a deliberate four-stage apply order. Use the bootstrap CLI to run all steps in one guided sequence:
 
 ```bash
 uv run scripts/bootstrap.py run
+```
+
+Each step validates that the previous stage deployed correctly before proceeding — if
+any AWS resource or GitHub configuration is missing, the CLI stops and tells you what
+to fix. Run all checks independently at any time:
+
+```bash
+uv run scripts/bootstrap.py validate
 ```
 
 Or check where you are at any point:
@@ -125,6 +146,34 @@ repository so CI jobs can authenticate and access state:
 uv run scripts/bootstrap.py configure-github
 ```
 
+## Post-bootstrap GitHub setup
+
+Two manual steps are required before CI can gate and apply changes correctly.
+The bootstrap CLI prints a reminder at the end of `run`, but they cannot be
+automated via the `gh` CLI.
+
+### 1. Create the `iam-production` GitHub Environment
+
+The `apply-iam` CI job is gated by this environment — it pauses for a required
+reviewer before applying any IAM changes.
+
+1. Go to **Settings → Environments → New environment** in your repository.
+2. Name it `iam-production`.
+3. Add required reviewers (platform team GitHub handles).
+4. Save.
+
+### 2. Enable branch protection on `main`
+
+Require the following status checks to pass before merging:
+
+- `fmt`
+- `validate-iam`, `validate-registry`, `validate-dev`
+- `plan-iam`, `plan-registry`, `plan-dev`
+
+Also enable **Require pull request reviews** to enforce CODEOWNERS.
+
+Go to **Settings → Branches → Add rule** and target the `main` branch.
+
 ## Re-running apply-core
 
 After the initial bootstrap, the `platform-bootstrap` IAM role (created by `iam/`) provides
@@ -164,7 +213,7 @@ After bootstrap, pull requests trigger:
 - **lock-files** — verifies `.terraform.lock.hcl` files cover all target platforms
 - **validate-iam / validate-registry / validate-dev** — syntax validation (no AWS credentials needed)
 - **plan-iam** — plan with OPA/Conftest policy gate (path-filtered to `platform/iam/**`)
-- **plan-registry** — plan (path-filtered to `platform/registry/**`)
+- **plan-registry** — plan (path-filtered to `platform/registry/**` or `modules/**`)
 - **plan-dev** — plan (path-filtered to `environments/dev/**`)
 
 Merges to `main` trigger:
@@ -233,9 +282,27 @@ Control Tower Account Factory, bootstrap it with:
 uv run scripts/bootstrap.py bootstrap-account --account-id <id> --env <env>
 ```
 
-Then add the account ID to `workload_account_ids` in `platform/core/terraform.tfvars`
-and open a pull request. See [docs/multi-account.md](docs/multi-account.md) for the
-full walkthrough.
+The CLI prints the exact next steps, including:
+
+1. Adding the account ID to `workload_account_ids` in `platform/core/terraform.tfvars`
+   (this file is gitignored — edit it locally), then re-applying `platform/core/`
+   with the `platform-bootstrap` role so `ci-pipeline` gains `sts:AssumeRole`
+   permission for the new account:
+
+   ```bash
+   AWS_PROFILE=platform-bootstrap uv run scripts/bootstrap.py apply-core
+   ```
+
+2. Setting the deployer role ARN as a GitHub Actions secret so CI can assume it:
+
+   ```bash
+   gh secret set TERRAFORM_DEPLOYER_<ENV>_ARN --body "<deployer_role_arn>"
+   ```
+
+   **This secret must be set before running `validate`** — the validate command checks
+   for it and will fail with a clear message if it is missing.
+
+See [docs/multi-account.md](docs/multi-account.md) for the full walkthrough.
 
 ## Further reading
 
