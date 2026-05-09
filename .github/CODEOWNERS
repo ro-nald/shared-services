@@ -12,18 +12,18 @@
 *                                                    @your-org/platform-team
 
 # IAM governance files — platform team only
-terraform/environments/iam/main.tf                  @your-org/platform-team
-terraform/environments/iam/variables.tf             @your-org/platform-team
-terraform/environments/iam/outputs.tf               @your-org/platform-team
-terraform/environments/iam/permission-sets.tf       @your-org/platform-team
-terraform/environments/iam/roles.tf                 @your-org/platform-team
+terraform/platform/iam/main.tf                  @your-org/platform-team
+terraform/platform/iam/variables.tf             @your-org/platform-team
+terraform/platform/iam/outputs.tf               @your-org/platform-team
+terraform/platform/iam/permission-sets.tf       @your-org/platform-team
+terraform/platform/iam/roles.tf                 @your-org/platform-team
 
 # Team deployer roles — team lead + platform team
 # Add an entry per team following this pattern:
-#   terraform/environments/iam/teams/team-<slug>.tf  @<team-lead-github-handle> @your-org/platform-team
+#   terraform/platform/iam/teams/team-<slug>.tf  @<team-lead-github-handle> @your-org/platform-team
 #
 # Example:
-#   terraform/environments/iam/teams/team-payments.tf  @alice @your-org/platform-team
-#   terraform/environments/iam/teams/team-data.tf      @bob   @your-org/platform-team
+#   terraform/platform/iam/teams/team-payments.tf  @alice @your-org/platform-team
+#   terraform/platform/iam/teams/team-data.tf      @bob   @your-org/platform-team
 
-terraform/environments/iam/teams/                   @your-org/platform-team
+terraform/platform/iam/teams/                   @your-org/platform-team
