@@ -224,6 +224,19 @@ Merges to `main` trigger:
 
 See [.github/workflows/terraform.yml](.github/workflows/terraform.yml) for the full workflow.
 
+### OIDC trust scope
+
+The `ci-pipeline` role trust policy allows only two `sub` claim values:
+
+- `repo:<org>/<repo>:ref:refs/heads/main` — push to main (apply jobs)
+- `repo:<org>/<repo>:pull_request` — pull request events (plan jobs)
+
+This means any new workflow trigger that needs AWS credentials — a release workflow,
+a scheduled job, a `workflow_dispatch` — must also be added to the `values` list in
+`terraform/platform/core/ci.tf` (`GitHubOIDCAssumeRole` condition), then re-applied
+via `apply-core`. If you add a trigger and find the OIDC exchange silently failing with
+a 403, this is the first place to check.
+
 ## Adding a team IAM role
 
 Teams request a dedicated Terraform deployer role by opening a pull request.
